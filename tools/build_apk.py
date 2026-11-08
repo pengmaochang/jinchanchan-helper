@@ -3,7 +3,6 @@ from pathlib import Path
 import os
 import subprocess
 import zipfile
-import shutil
 
 ROOT = Path(__file__).resolve().parents[1]
 TOOLS = ROOT / '.tools'
@@ -19,8 +18,6 @@ def main():
     BUILD.mkdir(parents=True, exist_ok=True)
     classes = BUILD / 'classes'
     classes.mkdir(exist_ok=True)
-    env = os.environ.copy()
-    env['JAVA_HOME'] = str(JDK)
     os.environ['JAVA_HOME'] = str(JDK)
     os.environ['PATH'] = str(JDK / 'bin') + os.pathsep + os.environ['PATH']
     resources = BUILD / 'resources.zip'
@@ -28,8 +25,8 @@ def main():
     raw = BUILD / 'raw.apk'
     run(bt / 'aapt2.exe', 'link', '-o', raw, '-I', sdk, '--manifest',
         ROOT / 'app/src/main/AndroidManifest.xml', '--min-sdk-version', '30',
-        '--target-sdk-version', '35', '--version-code', '1', '--version-name', '0.1',
-        '--rename-manifest-package', 'local.jcc.probe', resources)
+        '--target-sdk-version', '35', '--version-code', '2', '--version-name', '0.2',
+        '--rename-manifest-package', 'local.jcc.probe', '-A', ROOT / 'app/src/main/assets', resources)
     sources = list((ROOT / 'app/src/main/java').rglob('*.java'))
     run(JDK / 'bin/javac.exe', '-encoding', 'UTF-8', '--release', '17', '-classpath', sdk,
         '-d', classes, *sources)
@@ -38,8 +35,11 @@ def main():
     run(JDK / 'bin/java.exe', '-cp', bt / 'lib/d8.jar', 'com.android.tools.r8.D8',
         '--lib', sdk, '--min-api', '30', '--output', dex, *classes.rglob('*.class'))
     unsigned = BUILD / 'unsigned.apk'
-    shutil.copyfile(raw, unsigned)
-    with zipfile.ZipFile(unsigned, 'a') as archive:
+    # Repack instead of appending to aapt2's ZIP: keep local/central headers consistent.
+    with zipfile.ZipFile(raw) as source, zipfile.ZipFile(unsigned, 'w') as archive:
+        for entry in source.infolist():
+            archive.writestr(entry.filename, source.read(entry), compress_type=
+                zipfile.ZIP_STORED if entry.filename == 'resources.arsc' else zipfile.ZIP_DEFLATED)
         for file in dex.glob('*.dex'):
             archive.write(file, file.name)
     aligned = BUILD / 'aligned.apk'
