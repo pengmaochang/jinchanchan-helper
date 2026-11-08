@@ -24,7 +24,7 @@ public class MainActivity extends Activity {
         layout.setOrientation(LinearLayout.VERTICAL);
         layout.setPadding(28, 64, 28, 28);
         TextView title = new TextView(this);
-        title.setText("金铲铲助手 v0.3\n\n填写目标 → 保存并显示悬浮窗 → 切到游戏 → 展开商店 → 点击开始。\n\n按输入顺序自动购买，确认后继续；自动刷新可开关。关闭商店或点击暂停即停止。首次实机使用建议先勾选“仅识别”。\n");
+        title.setText("金铲铲助手 v0.3.1\n\n填写目标 → 保存并显示悬浮窗 → 切到游戏 → 展开商店 → 点击开始。\n\n开始时悬浮窗自动移到商店下方。按输入顺序自动购买，确认后继续；自动刷新可开关。关闭商店或点击暂停即停止。首次实机使用建议先勾选“仅识别”。\n");
         title.setTextSize(18);
         layout.addView(title);
         Button settings = new Button(this);

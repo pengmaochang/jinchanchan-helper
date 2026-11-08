@@ -16,7 +16,9 @@ final class ScanOverlay {
     private final TextView handle;
     private final LinearLayout controls;
     private final Switch refreshToggle;
+    private final Button startButton;
     private boolean attached, compact;
+    private boolean running;
     private float startX, startY;
     private int originX, originY;
 
@@ -49,7 +51,7 @@ final class ScanOverlay {
         refreshToggle.setOnCheckedChangeListener((button, checked) -> service.setAutoRefresh(checked));
         root.addView(refreshToggle);
         controls = new LinearLayout(service);
-        addButton(service, "开始", service::startScanning);
+        startButton = addButton(service, "开始", service::startScanning);
         addButton(service, "暂停", () -> service.stopScanning("已手动暂停"));
         addButton(service, "关闭", service::hideOverlay);
         root.addView(controls);
@@ -78,7 +80,7 @@ final class ScanOverlay {
                     status.setVisibility(compact ? View.GONE : View.VISIBLE);
                     controls.setVisibility(compact ? View.GONE : View.VISIBLE);
                     refreshToggle.setVisibility(compact ? View.GONE : View.VISIBLE);
-                    handle.setText(compact ? "金铲铲助手 · 点击展开" : "金铲铲助手 · 拖动 / 点此收起");
+                    updateTitle();
                     windows.updateViewLayout(root, params);
                 }
                 return true;
@@ -87,12 +89,13 @@ final class ScanOverlay {
         });
     }
     private static int dp(Context context, int value) { return (int) (value * context.getResources().getDisplayMetrics().density + .5f); }
-    private void addButton(Context context, String title, Runnable action) {
+    private Button addButton(Context context, String title, Runnable action) {
         Button button = new Button(context);
         button.setText(title); button.setTextSize(12); button.setMinWidth(0); button.setMinimumWidth(0);
         button.setPadding(0, 0, 0, 0);
         controls.addView(button, new LinearLayout.LayoutParams(0, dp(context, 38), 1));
         button.setOnClickListener(v -> action.run());
+        return button;
     }
     private void clamp() {
         android.graphics.Rect bounds = windows.getCurrentWindowMetrics().getBounds();
@@ -108,8 +111,22 @@ final class ScanOverlay {
     }
     void remove() { if (attached) { windows.removeView(root); attached = false; } }
     void update(String message, boolean running) {
+        this.running = running;
         status.setText(message);
-        if (compact) handle.setText((running ? "识别中" : "已暂停") + " · 点击展开");
+        startButton.setText(running ? "运行中" : "开始");
+        startButton.setEnabled(!running);
+        updateTitle();
+    }
+    private void updateTitle() {
+        handle.setText((running ? "运行中" : "已暂停") + (compact ? " · 点击展开" : " · 拖动 / 点击收起"));
+    }
+    void dockBelowShop() {
+        if (!attached) return;
+        android.graphics.Rect bounds = windows.getCurrentWindowMetrics().getBounds();
+        params.x = (int) (bounds.width() * .22);
+        params.y = (int) (bounds.height() * .55);
+        clamp();
+        windows.updateViewLayout(root, params);
     }
     boolean blocksPoint(float x, float y) {
         if (!attached) return false;

@@ -29,7 +29,7 @@ def main():
     raw = BUILD / 'raw.apk'
     run(bt / 'aapt2.exe', 'link', '-o', raw, '-I', sdk, '--manifest',
         ROOT / 'app/src/main/AndroidManifest.xml', '--min-sdk-version', '30',
-        '--target-sdk-version', '35', '--version-code', '3', '--version-name', '0.3',
+        '--target-sdk-version', '35', '--version-code', '4', '--version-name', '0.3.1',
         '--rename-manifest-package', 'local.jcc.probe', '-A', ROOT / 'app/src/main/assets',
         '-A', ocr / 'assets', resources)
     sources = list((ROOT / 'app/src/main/java').rglob('*.java'))

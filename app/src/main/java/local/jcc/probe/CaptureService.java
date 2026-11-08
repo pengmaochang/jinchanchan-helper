@@ -31,6 +31,7 @@ public class CaptureService extends AccessibilityService {
     private boolean previewOnly;
     private long lastScreenshot;
     private int changedFrames;
+    private int dockAttempts;
     private java.util.List<String> targets;
     private final Runnable scanNext = this::scan;
     private final Runnable capture = this::captureNow;
@@ -83,10 +84,11 @@ public class CaptureService extends AccessibilityService {
         } catch (IllegalArgumentException e) { status(e.getMessage()); return; }
         previewOnly = prefs.getBoolean("previewOnly", false);
         scanning = true;
-        changedFrames = 0;
+        changedFrames = 0; dockAttempts = 0;
         generation++;
         status("正在加载中文 OCR · 目标：" + targets);
-        scan();
+        if (overlay != null) overlay.dockBelowShop();
+        handler.postDelayed(scanNext, 100);
     }
     private static boolean isGamePackage(String pkg) { return pkg.equals("com.tencent.jkchess") || pkg.equals("com.tencent.jk"); }
     private boolean isGameForeground() {
@@ -120,8 +122,12 @@ public class CaptureService extends AccessibilityService {
         if (!scanning) return;
         if (!isGameForeground()) { stopScanning("当前前台不是游戏，已暂停：" + foreground); return; }
         if (overlay != null && overlay.overlapsShop()) {
-            stopScanning("悬浮窗遮住商店：请拖到画面下半部再开始"); return;
+            if (++dockAttempts > 3) { stopScanning("悬浮窗尺寸超出下方可用空间，请先收起后开始"); return; }
+            overlay.dockBelowShop();
+            status("正在把悬浮窗移到商店下方……");
+            handler.postDelayed(scanNext, 100); return;
         }
+        dockAttempts = 0;
         if (busy) { handler.postDelayed(scanNext, 100); return; }
         long remaining = 360 - (SystemClock.elapsedRealtime() - lastScreenshot);
         if (remaining > 0) { handler.postDelayed(scanNext, remaining); return; }
@@ -225,7 +231,9 @@ public class CaptureService extends AccessibilityService {
             status("自动刷新已关闭，取消待执行刷新"); handler.postDelayed(scanNext, 100); return;
         }
         if (!isGameForeground()) { stopScanning("已离开游戏，点击已取消"); return; }
-        if (overlay != null && overlay.overlapsShop()) { stopScanning("悬浮窗遮挡商店，点击已取消"); return; }
+        if (overlay != null && overlay.overlapsShop()) {
+            overlay.dockBelowShop(); handler.postDelayed(scanNext, 100); return;
+        }
         java.util.concurrent.ThreadLocalRandom random = java.util.concurrent.ThreadLocalRandom.current();
         float x = (action.kind == BuyPolicy.Kind.BUY ? ShopVision.LEFT[action.slot] + 140 : 1915) + random.nextInt(-7, 8);
         float y = (action.kind == BuyPolicy.Kind.BUY ? 240 : 605) + random.nextInt(-9, 10);
