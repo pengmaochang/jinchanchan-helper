@@ -271,21 +271,25 @@ public class CaptureService extends AccessibilityService {
             overlay.dockBelowShop(); handler.postDelayed(scanNext, 100); return;
         }
         java.util.concurrent.ThreadLocalRandom random = java.util.concurrent.ThreadLocalRandom.current();
-        float x = (action.kind == BuyPolicy.Kind.BUY ? PhoneLayout.NAME_X[action.slot] + 183 : 2497) + random.nextInt(-9, 10);
-        float y = (action.kind == BuyPolicy.Kind.BUY ? 313 : 789) + random.nextInt(-12, 13);
-        if (overlay != null && overlay.blocksPoint(x, y)) {
-            overlay.dockBelowShop(); retryFrame("正在移开悬浮窗"); return;
+        int count = action.kind == BuyPolicy.Kind.BUY ? action.slots.length : 1;
+        TapTiming timing = new TapTiming(count, random);
+        android.accessibilityservice.GestureDescription.Builder builder = new android.accessibilityservice.GestureDescription.Builder();
+        for (int i = 0; i < count; i++) {
+            float x = (action.kind == BuyPolicy.Kind.BUY ? PhoneLayout.NAME_X[action.slots[i]] + 183 : 2497) + random.nextInt(-9, 10);
+            float y = (action.kind == BuyPolicy.Kind.BUY ? 313 : 789) + random.nextInt(-12, 13);
+            if (overlay != null && overlay.blocksPoint(x, y)) {
+                overlay.dockBelowShop(); retryFrame("正在移开悬浮窗"); return;
+            }
+            android.graphics.Path path = new android.graphics.Path(); path.moveTo(x, y);
+            builder.addStroke(new android.accessibilityservice.GestureDescription.StrokeDescription(path, timing.starts[i], timing.durations[i]));
         }
-        android.graphics.Path path = new android.graphics.Path();
-        path.moveTo(x, y);
-        android.accessibilityservice.GestureDescription gesture = new android.accessibilityservice.GestureDescription.Builder()
-            .addStroke(new android.accessibilityservice.GestureDescription.StrokeDescription(path, 0, 35 + random.nextInt(31))).build();
+        android.accessibilityservice.GestureDescription gesture = builder.build();
         try {
             boolean accepted = dispatchGesture(gesture, new GestureResultCallback() {
                 @Override public void onCompleted(android.accessibilityservice.GestureDescription g) {
                     if (!scanning || token != generation) return;
                     policy.sent(action, frame);
-                    android.util.Log.i("JccAssist", "Gesture completed: " + action.message);
+                    android.util.Log.i("JccAssist", "Gesture completed: " + action.message + " · scheduled=" + timing.totalMs + "ms");
                     handler.postDelayed(scanNext, 60);
                 }
                 @Override public void onCancelled(android.accessibilityservice.GestureDescription g) {

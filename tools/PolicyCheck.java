@@ -14,12 +14,10 @@ public class PolicyCheck {
         BuyPolicy p = new BuyPolicy(BuyPolicy.parseTargets("可酷伯\n维迦，可酷伯"), 0, true);
         BuyPolicy.Frame f = frame(74, "维迦", "可酷伯", "可酷伯");
         BuyPolicy.Decision d = p.decide(f);
-        check(d.kind == BUY && d.slot == 1, "Priority order"); p.sent(d, f);
+        check(d.kind == BUY && Arrays.equals(d.slots, new int[]{1,2,0}), "Batch priority order"); p.sent(d, f);
         check(p.decide(f).kind == WAIT && p.bought == 0, "No duplicate tap or early count");
         f = frame(73, "维迦", "", "可酷伯"); d = p.decide(f);
-        check(p.bought == 1 && d.kind == BUY && d.slot == 2, "Confirm then buy second copy"); p.sent(d, f);
-        f = frame(72, "维迦"); d = p.decide(f);
-        check(p.bought == 2 && d.slot == 0, "Next priority"); p.sent(d, f);
+        check(p.bought == 1 && d.kind == BUY && Arrays.equals(d.slots, new int[]{2,0}), "Partial batch only retries remaining cards"); p.sent(d, f);
         f = frame(71); d = p.decide(f);
         check(p.bought == 3 && d.kind == REFRESH, "Refresh only when targets absent"); p.sent(d, f);
         check(p.decide(frame(69)).kind == WAIT && p.refreshed == 0, "Never refresh again while new cards are loading");
@@ -51,6 +49,11 @@ public class PolicyCheck {
         check(p.decide(frame(18, "洛")).kind == REFRESH, "Live toggle enables refresh");
         p.setAutoRefresh(false);
         check(p.decide(frame(18, "洛")).kind == WAIT, "Live toggle disables refresh");
+        p = new BuyPolicy(List.of("可酷伯", "维迦"), 0, true);
+        check(Arrays.equals(p.decide(frame(2, "维迦", "可酷伯", "可酷伯")).slots, new int[]{1,2}), "Batch never exceeds gold budget");
+        p = new BuyPolicy(List.of("凯尔"), 1, false);
+        f = frame(12, "凯尔", "凯尔", "凯尔"); Arrays.fill(f.costs, 5);
+        check(Arrays.equals(p.decide(f).slots, new int[]{0,1}), "Expensive batch respects reserve");
         System.out.println("Policy checks passed.");
     }
 }

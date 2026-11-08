@@ -54,32 +54,6 @@ final class ShopOcr implements AutoCloseable {
         finally { crop.recycle(); }
     }
     Reading readCardName(Bitmap image, int slot) { return read(image, PhoneLayout.name(slot), false); }
-    private Reading[] nameBand(Bitmap image) {
-        final int left = 468, top = 475;
-        Bitmap crop = Bitmap.createBitmap(2130, 90, Bitmap.Config.ARGB_8888);
-        Paint paint = new Paint();
-        new Canvas(crop).drawBitmap(image, new Rect(left, top, left + 2130, top + 90), new Rect(0, 0, 2130, 90), paint);
-        try {
-            Text text = Tasks.await(recognizer.process(InputImage.fromBitmap(crop, 0)), 5, TimeUnit.SECONDS);
-            @SuppressWarnings("unchecked") java.util.List<Text.Element>[] bins = new java.util.List[5];
-            for (int i = 0; i < 5; i++) bins[i] = new java.util.ArrayList<>();
-            for (Text.TextBlock block : text.getTextBlocks()) for (Text.Line line : block.getLines()) for (Text.Element e : line.getElements()) {
-                Rect box = e.getBoundingBox(); if (box == null || e.getText().replaceAll("[^\\p{IsHan}·]", "").isEmpty()) continue;
-                int x = box.centerX() + left;
-                for (int slot = 0; slot < 5; slot++) if (x >= PhoneLayout.NAME_X[slot] - 8 && x <= PhoneLayout.NAME_X[slot] + PhoneLayout.NAME_W + 8)
-                    bins[slot].add(e);
-            }
-            Reading[] out = new Reading[5];
-            for (int i = 0; i < 5; i++) {
-                bins[i].sort(java.util.Comparator.comparingInt(e -> e.getBoundingBox().left));
-                StringBuilder value = new StringBuilder(); float confidence = 1;
-                for (Text.Element e : bins[i]) { value.append(e.getText().replaceAll("[^\\p{IsHan}·]", "")); confidence = Math.min(confidence, e.getConfidence()); }
-                out[i] = new Reading(value.toString(), bins[i].isEmpty() ? 0 : Math.round(confidence * 100));
-            }
-            return out;
-        } catch (Exception e) { throw new IllegalStateException(e); }
-        finally { crop.recycle(); }
-    }
     private Reading[] batch(Bitmap image) {
         final int rowHeight = 110;
         Bitmap crop = Bitmap.createBitmap(440, rowHeight * 7, Bitmap.Config.ARGB_8888);
@@ -137,7 +111,6 @@ final class ShopOcr implements AutoCloseable {
         if (!f.shopOpen) f.shopOpen = read(image, PhoneLayout.REFRESH, false).text.contains("刷新");
         if (!f.shopOpen) return f;
         Reading[] readings = batch(image);
-        Reading[] band = nameBand(image);
         f.gold = number(readings[10]);
         f.readable = f.gold >= 0;
         if (!f.readable) f.problem = "金币区域读取失败";
@@ -150,7 +123,7 @@ final class ShopOcr implements AutoCloseable {
                 double score = PhoneVision.score(mask, templates[j], PhoneLayout.NAME_W, PhoneLayout.NAME_H);
                 if (score >= best) { best = score; known = PhoneVision.NAMES[j]; }
             }
-            Reading name = band[i];
+            Reading name = readings[i];
             f.names[i] = known != null ? known : name.text;
             if (known == null && name.text.isEmpty()) {
                 f.readable = false;

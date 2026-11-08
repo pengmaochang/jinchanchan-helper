@@ -1,147 +1,180 @@
 package local.jcc.probe;
 
 import android.content.Context;
-import android.graphics.Color;
-import android.graphics.PixelFormat;
+import android.content.res.ColorStateList;
+import android.graphics.*;
 import android.graphics.drawable.GradientDrawable;
 import android.view.*;
 import android.widget.*;
 
-/** Small, touchable service overlay. Only its handle intercepts drag gestures. */
+/** A translucent draggable bubble; an outside touch dismisses its compact control panel. */
 final class ScanOverlay {
+    private final CaptureService service;
     private final WindowManager windows;
-    private final LinearLayout root;
+    private final FrameLayout root;
+    private final BubbleView bubble;
+    private final LinearLayout panel;
     private final WindowManager.LayoutParams params;
-    private final TextView status;
-    private final TextView handle;
-    private final LinearLayout controls;
-    private final Switch refreshToggle;
-    private final Button startButton;
-    private boolean attached;
-    private boolean running;
-    private float startX, startY;
-    private int originX, originY;
+    private final Switch assistSwitch, refreshSwitch;
+    private final TextView deckLabel;
+    private PopupMenu deckMenu;
+    private boolean attached, expanded, running, syncing, moved;
+    private float downX, downY;
+    private int originX, originY, bubbleX, bubbleY;
 
     ScanOverlay(CaptureService service) {
+        this.service = service;
         windows = (WindowManager) service.getSystemService(Context.WINDOW_SERVICE);
-        root = new LinearLayout(service);
-        root.setOrientation(LinearLayout.VERTICAL);
-        int pad = dp(service, 5);
-        root.setPadding(pad, pad, pad, pad);
-        GradientDrawable background = new GradientDrawable();
-        background.setColor(Color.rgb(24, 31, 45));
-        background.setCornerRadius(dp(service, 12));
-        root.setBackground(background);
-        handle = new TextView(service);
-        handle.setText("金铲铲助手 · 拖动 / 点此收起");
-        handle.setTextSize(11);
-        handle.setTextColor(Color.WHITE);
-        handle.setPadding(0, 4, 0, 8);
-        root.addView(handle);
-        status = new TextView(service);
-        status.setTextColor(Color.rgb(180, 224, 255));
-        status.setTextSize(11);
-        status.setText("卡组：" + service.currentDeckName() + " ▾");
-        status.setMaxLines(1);
-        status.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        root.addView(status);
-        status.setPadding(0, dp(service, 3), 0, dp(service, 3));
-        status.setOnClickListener(v -> chooseDeck(service));
-        refreshToggle = new Switch(service);
-        refreshToggle.setText("自动刷"); refreshToggle.setTextSize(11); refreshToggle.setTextColor(Color.WHITE);
-        refreshToggle.setChecked(service.getSharedPreferences("probe", Context.MODE_PRIVATE).getBoolean("autoRefresh", false));
-        refreshToggle.setOnCheckedChangeListener((button, checked) -> service.setAutoRefresh(checked));
-        controls = new LinearLayout(service);
-        controls.setGravity(Gravity.CENTER_VERTICAL);
-        startButton = addButton(service, "开启", service::toggleScanning);
-        controls.addView(refreshToggle, new LinearLayout.LayoutParams(dp(service, 94), dp(service, 34)));
-        Button close = new Button(service);
-        close.setText("×"); close.setTextSize(17); close.setMinWidth(0); close.setMinimumWidth(0); close.setPadding(0,0,0,0);
-        controls.addView(close, new LinearLayout.LayoutParams(dp(service, 28), dp(service, 34)));
-        close.setOnClickListener(v -> service.hideOverlay());
-        root.addView(controls);
-        params = new WindowManager.LayoutParams(dp(service, 205), WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
-            PixelFormat.TRANSLUCENT);
+        root = new FrameLayout(service) {
+            @Override public boolean dispatchTouchEvent(MotionEvent event) {
+                if (event.getActionMasked() == MotionEvent.ACTION_OUTSIDE) {
+                    if (expanded && deckMenu == null) collapse();
+                    return true;
+                }
+                return super.dispatchTouchEvent(event);
+            }
+        };
+        bubble = new BubbleView(service);
+        bubble.setOnClickListener(v -> expand());
+        bubble.setOnTouchListener((v, event) -> drag(v, event, true));
+        panel = new LinearLayout(service);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(dp(12), dp(8), dp(12), dp(10));
+        panel.setBackground(background(Color.argb(246, 24, 33, 48), 16, Color.rgb(61, 77, 97)));
+        LinearLayout heading = new LinearLayout(service); heading.setGravity(Gravity.CENTER_VERTICAL);
+        TextView title = text("金铲铲助手", 14, Color.WHITE);
+        title.setTypeface(null, Typeface.BOLD);
+        title.setOnTouchListener((v, event) -> drag(v, event, false));
+        heading.addView(title, new LinearLayout.LayoutParams(0, dp(32), 1));
+        TextView fold = text("⌄", 24, Color.rgb(169, 187, 206)); fold.setGravity(Gravity.CENTER);
+        fold.setContentDescription("收起为图标"); fold.setOnClickListener(v -> collapse());
+        heading.addView(fold, new LinearLayout.LayoutParams(dp(32), dp(32))); panel.addView(heading);
+        TextView label = text("当前卡组", 10, Color.rgb(148, 168, 190)); panel.addView(label);
+        deckLabel = text(service.currentDeckName() + "  ▾", 13, Color.rgb(190, 239, 230));
+        deckLabel.setSingleLine(true); deckLabel.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        deckLabel.setGravity(Gravity.CENTER_VERTICAL);
+        deckLabel.setPadding(dp(10), 0, dp(8), 0);
+        deckLabel.setBackground(background(Color.rgb(38, 51, 69), 8, Color.TRANSPARENT));
+        deckLabel.setOnClickListener(v -> chooseDeck());
+        panel.addView(deckLabel, new LinearLayout.LayoutParams(-1, dp(38)));
+        assistSwitch = makeSwitch("自动拿卡");
+        refreshSwitch = makeSwitch("自动刷新");
+        panel.addView(assistSwitch, new LinearLayout.LayoutParams(-1, dp(44)));
+        panel.addView(refreshSwitch, new LinearLayout.LayoutParams(-1, dp(44)));
+        assistSwitch.setOnCheckedChangeListener((button, checked) -> {
+            if (syncing) return;
+            if (checked) service.startScanning(); else service.stopScanning("已手动暂停");
+        });
+        refreshSwitch.setOnCheckedChangeListener((button, checked) -> { if (!syncing) service.setAutoRefresh(checked); });
+        params = new WindowManager.LayoutParams(dp(44), dp(44), WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL |
+                WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH, PixelFormat.TRANSLUCENT);
         params.gravity = Gravity.TOP | Gravity.LEFT;
-        params.x = dp(service, 130);
-        params.y = (int) (windows.getCurrentWindowMetrics().getBounds().height() * .56);
-        handle.setOnTouchListener((v, event) -> {
-            if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
-                startX = event.getRawX(); startY = event.getRawY(); originX = params.x; originY = params.y;
-                return true;
-            }
-            if (event.getActionMasked() == MotionEvent.ACTION_MOVE) {
-                params.x = originX + (int) (event.getRawX() - startX);
-                params.y = originY + (int) (event.getRawY() - startY);
-                clamp();
-                if (attached) windows.updateViewLayout(root, params);
-                return true;
-            }
-            if (event.getActionMasked() == MotionEvent.ACTION_UP) {
-                if (Math.abs(event.getRawX() - startX) + Math.abs(event.getRawY() - startY) < dp(service, 8)) {
-                    chooseDeck(service);
+        params.x = dp(32); params.y = (int) (bounds().height() * .56);
+        bubbleX = params.x; bubbleY = params.y;
+        root.addView(bubble, new FrameLayout.LayoutParams(-1, -1));
+        update("", false);
+    }
+    private int dp(int value) { return (int) (value * service.getResources().getDisplayMetrics().density + .5f); }
+    private Rect bounds() { return windows.getCurrentWindowMetrics().getBounds(); }
+    private TextView text(String value, int size, int color) {
+        TextView view = new TextView(service); view.setText(value); view.setTextSize(size); view.setTextColor(color); return view;
+    }
+    private GradientDrawable background(int color, int radius, int border) {
+        GradientDrawable shape = new GradientDrawable(); shape.setColor(color); shape.setCornerRadius(dp(radius));
+        shape.setStroke(dp(1), border); return shape;
+    }
+    private Switch makeSwitch(String title) {
+        Switch toggle = new Switch(service); toggle.setText(title); toggle.setTextSize(13); toggle.setTextColor(Color.WHITE);
+        int[][] states = {{android.R.attr.state_checked}, {}};
+        toggle.setThumbTintList(new ColorStateList(states, new int[]{Color.rgb(86, 221, 190), Color.rgb(166, 177, 194)}));
+        toggle.setTrackTintList(new ColorStateList(states, new int[]{Color.rgb(34, 119, 106), Color.rgb(62, 75, 93)}));
+        toggle.setSwitchPadding(dp(12)); return toggle;
+    }
+    private boolean drag(View view, MotionEvent event, boolean icon) {
+        switch (event.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN:
+                downX = event.getRawX(); downY = event.getRawY(); originX = params.x; originY = params.y; moved = false; return true;
+            case MotionEvent.ACTION_MOVE:
+                float dx = event.getRawX() - downX, dy = event.getRawY() - downY;
+                if (Math.abs(dx) + Math.abs(dy) > ViewConfiguration.get(service).getScaledTouchSlop()) moved = true;
+                if (moved) {
+                    params.x = originX + (int) dx; params.y = originY + (int) dy;
+                    clamp(); bubbleX = params.x; bubbleY = params.y;
+                    if (attached) windows.updateViewLayout(root, params);
                 }
                 return true;
-            }
-            return false;
-        });
+            case MotionEvent.ACTION_UP:
+                if (!moved && icon) view.performClick(); return true;
+            case MotionEvent.ACTION_CANCEL: moved = false; return true;
+            default: return false;
+        }
     }
-    private static int dp(Context context, int value) { return (int) (value * context.getResources().getDisplayMetrics().density + .5f); }
-    private Button addButton(Context context, String title, Runnable action) {
-        Button button = new Button(context);
-        button.setText(title); button.setTextSize(12); button.setMinWidth(0); button.setMinimumWidth(0);
-        button.setPadding(0, 0, 0, 0);
-        controls.addView(button, new LinearLayout.LayoutParams(0, dp(context, 34), 1));
-        button.setOnClickListener(v -> action.run());
-        return button;
+    private void expand() {
+        if (!attached || expanded) return;
+        expanded = true; bubbleX = params.x; bubbleY = params.y;
+        service.beginDeckSelection();
+        root.removeAllViews(); root.addView(panel, new FrameLayout.LayoutParams(-1, -2));
+        params.width = dp(228); params.height = WindowManager.LayoutParams.WRAP_CONTENT;
+        panel.measure(View.MeasureSpec.makeMeasureSpec(params.width, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+        clamp(); windows.updateViewLayout(root, params);
+    }
+    private void collapse() {
+        if (!expanded) return;
+        expanded = false;
+        if (deckMenu != null) { PopupMenu menu = deckMenu; deckMenu = null; menu.dismiss(); }
+        root.removeAllViews(); root.addView(bubble, new FrameLayout.LayoutParams(-1, -1));
+        params.width = dp(44); params.height = dp(44); params.x = bubbleX; params.y = bubbleY;
+        clamp();
+        if (attached) windows.updateViewLayout(root, params);
+        service.endDeckSelection();
     }
     private void clamp() {
-        android.graphics.Rect bounds = windows.getCurrentWindowMetrics().getBounds();
-        params.x = Math.max(0, Math.min(params.x, Math.max(0, bounds.width() - params.width)));
-        params.y = Math.max(0, Math.min(params.y, Math.max(0, bounds.height() - Math.max(root.getHeight(), 80))));
+        Rect screen = bounds();
+        int height = expanded ? Math.max(panel.getMeasuredHeight(), dp(196)) : dp(44);
+        params.x = Math.max(0, Math.min(params.x, Math.max(0, screen.width() - params.width)));
+        params.y = Math.max(0, Math.min(params.y, Math.max(0, screen.height() - height)));
     }
     void show() { if (!attached) { clamp(); windows.addView(root, params); attached = true; } }
+    void remove() {
+        if (deckMenu != null) { PopupMenu menu = deckMenu; deckMenu = null; menu.dismiss(); }
+        if (attached) { windows.removeView(root); attached = false; }
+        expanded = false; service.endDeckSelection();
+    }
     void onRotation() {
-        if (!attached) return;
-        params.y = (int) (windows.getCurrentWindowMetrics().getBounds().height() * .56);
-        clamp();
-        windows.updateViewLayout(root, params);
+        if (expanded) collapse();
+        params.y = (int) (bounds().height() * .56); bubbleY = params.y;
+        clamp(); if (attached) windows.updateViewLayout(root, params);
     }
-    void remove() { if (attached) { windows.removeView(root); attached = false; } }
     void update(String message, boolean running) {
-        this.running = running;
-        status.setText("卡组：" + ((CaptureService) root.getContext()).currentDeckName() + " ▾");
-        startButton.setText(running ? "暂停" : "开启");
-        updateTitle();
+        this.running = running; syncing = true;
+        assistSwitch.setChecked(running);
+        refreshSwitch.setChecked(service.getSharedPreferences("probe", Context.MODE_PRIVATE).getBoolean("autoRefresh", false));
+        syncing = false;
+        deckLabel.setText(service.currentDeckName() + "  ▾");
+        bubble.setContentDescription((running ? "辅助已开启" : "辅助已暂停") + "，当前卡组 " + service.currentDeckName() + "，点击展开");
+        bubble.invalidate();
     }
-    private void updateTitle() {
-        handle.setText((running ? "● 已开启" : "○ 已暂停") + " · 拖动");
-    }
-    private void chooseDeck(CaptureService service) {
+    private void chooseDeck() {
         try {
             java.util.List<DeckStore.Deck> decks = new DeckStore(service).all();
             String active = new DeckStore(service).current().id;
-            PopupMenu menu = new PopupMenu(service, status);
+            PopupMenu menu = new PopupMenu(service, deckLabel); deckMenu = menu;
+            final boolean[] chosen = {false};
             for (int i = 0; i < decks.size(); i++) menu.getMenu().add(0, i, i, decks.get(i).name)
                 .setCheckable(true).setChecked(decks.get(i).id.equals(active));
-            menu.setOnMenuItemClickListener(item -> { service.selectDeck(decks.get(item.getItemId()).id); return true; });
-            menu.setOnDismissListener(m -> service.endDeckSelection());
-            service.beginDeckSelection();
+            menu.setOnMenuItemClickListener(item -> { chosen[0] = true; service.selectDeck(decks.get(item.getItemId()).id); return true; });
+            menu.setOnDismissListener(m -> { deckMenu = null; if (!chosen[0]) collapse(); });
             menu.show();
         } catch (RuntimeException e) {
-            service.endDeckSelection();
-            Toast.makeText(service, "无法打开卡组：" + e.getMessage(), Toast.LENGTH_LONG).show();
+            deckMenu = null; Toast.makeText(service, "无法打开卡组：" + e.getMessage(), Toast.LENGTH_LONG).show();
         }
     }
     void dockBelowShop() {
-        if (!attached) return;
-        android.graphics.Rect bounds = windows.getCurrentWindowMetrics().getBounds();
-        params.x = (int) (bounds.width() * .22);
-        params.y = (int) (bounds.height() * .55);
-        clamp();
-        windows.updateViewLayout(root, params);
+        if (!attached || expanded) return;
+        params.x = (int) (bounds().width() * .22); params.y = (int) (bounds().height() * .55);
+        clamp(); bubbleX = params.x; bubbleY = params.y; windows.updateViewLayout(root, params);
     }
     boolean blocksPoint(float x, float y) {
         if (!attached) return false;
@@ -150,10 +183,28 @@ final class ScanOverlay {
     }
     boolean overlapsShop() {
         if (!attached) return false;
-        int[] xy = new int[2]; root.getLocationOnScreen(xy);
-        android.graphics.Rect bounds = windows.getCurrentWindowMetrics().getBounds();
-        android.graphics.Rect shop = new android.graphics.Rect((int) (bounds.width() * .17),
-            (int) (bounds.height() * .035), (int) (bounds.width() * .98), (int) (bounds.height() * .48));
+        int[] xy = new int[2]; root.getLocationOnScreen(xy); Rect screen = bounds();
+        Rect shop = new Rect((int) (screen.width() * .17), (int) (screen.height() * .035),
+            (int) (screen.width() * .98), (int) (screen.height() * .48));
         return shop.intersects(xy[0], xy[1], xy[0] + root.getWidth(), xy[1] + root.getHeight());
+    }
+    private final class BubbleView extends View {
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        BubbleView(Context context) { super(context); setClickable(true); }
+        @Override protected void onDraw(Canvas canvas) {
+            super.onDraw(canvas);
+            float cx = getWidth() / 2f, cy = getHeight() / 2f, radius = Math.min(cx, cy) - dp(1);
+            paint.setStyle(Paint.Style.FILL); paint.setColor(Color.argb(178, 19, 29, 42)); canvas.drawCircle(cx, cy, radius, paint);
+            paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(dp(1));
+            paint.setColor(running ? Color.argb(225, 83, 229, 187) : Color.argb(170, 157, 175, 195));
+            canvas.drawCircle(cx, cy, radius, paint);
+            paint.setStyle(Paint.Style.FILL); paint.setColor(Color.argb(232, 238, 245, 251));
+            paint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD)); paint.setTextSize(dp(18)); paint.setTextAlign(Paint.Align.CENTER);
+            canvas.drawText("铲", cx, cy + dp(2), paint);
+            paint.setColor(running ? Color.rgb(56, 191, 148) : Color.rgb(99, 114, 136));
+            canvas.drawRoundRect(cx - dp(10), getHeight() - dp(14), cx + dp(10), getHeight() - dp(1), dp(6), dp(6), paint);
+            paint.setColor(Color.WHITE); paint.setTextSize(dp(9));
+            canvas.drawText(running ? "开" : "停", cx, getHeight() - dp(4), paint);
+        }
     }
 }

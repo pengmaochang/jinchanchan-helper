@@ -19,8 +19,10 @@ public class OcrChecks extends Instrumentation {
                 if (image == null) throw new IllegalStateException("样本不存在：" + file);
                 long start = android.os.SystemClock.elapsedRealtime();
                 BuyPolicy.Frame f;
+                long analyzeElapsed;
                 try {
                     f = ocr.analyze(image);
+                    analyzeElapsed = android.os.SystemClock.elapsedRealtime() - start;
                     if (i == 1 || i == 3) for (int slot = 0; slot < 5; slot++) {
                         ShopOcr.Reading raw = ocr.readCardName(image, slot);
                         log.append("raw name ").append(slot).append(": ").append(raw.text).append(" / ").append(raw.confidence).append('\n');
@@ -28,7 +30,7 @@ public class OcrChecks extends Instrumentation {
                 } finally { image.recycle(); }
                 log.append(i).append(": open=").append(f.shopOpen).append(" readable=").append(f.readable)
                     .append(" ").append(f.summary()).append(" costs=").append(java.util.Arrays.toString(f.costs))
-                    .append(" ms=").append(android.os.SystemClock.elapsedRealtime() - start).append('\n');
+                    .append(" analyze_ms=").append(analyzeElapsed).append('\n');
                 result.putString("details", log.toString());
                 if (i == 0 && f.shopOpen) failures.append("收起商店误判；");
                 if (i > 0 && (!f.shopOpen || !f.readable || f.gold != (i == 1 ? 74 : i == 2 ? 73 : 31)))

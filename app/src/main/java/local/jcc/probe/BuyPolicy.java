@@ -16,8 +16,13 @@ public final class BuyPolicy {
     public static final class Decision {
         public final Kind kind;
         public final int slot;
+        public final int[] slots;
         public final String message;
-        Decision(Kind kind, int slot, String message) { this.kind = kind; this.slot = slot; this.message = message; }
+        Decision(Kind kind, int slot, String message) {
+            this.kind = kind; this.slot = slot; this.message = message;
+            this.slots = kind == Kind.BUY ? new int[]{slot} : new int[0];
+        }
+        Decision(int[] slots, String message) { this.kind = Kind.BUY; this.slots = slots; this.slot = slots[0]; this.message = message; }
     }
     private final List<String> targets;
     private final int reserve;
@@ -40,22 +45,29 @@ public final class BuyPolicy {
         if (pending != null) {
             if (pending.kind == Kind.REFRESH && java.util.Arrays.stream(frame.names).allMatch(name -> "".equals(name)))
                 return decision(Kind.WAIT, -1, "等待刷新动画结束");
-            boolean confirmed = pending.kind == Kind.BUY ? "".equals(frame.names[pending.slot]) :
+            int completed = 0;
+            if (pending.kind == Kind.BUY) for (int slot : pending.slots) if ("".equals(frame.names[slot])) completed++;
+            boolean confirmed = pending.kind == Kind.BUY ? completed > 0 :
                 frame.gold == previousGold - pendingCost || !Arrays.equals(frame.names, previousNames);
             if (confirmed) {
-                if (pending.kind == Kind.BUY) bought++; else refreshed++;
+                if (pending.kind == Kind.BUY) bought += completed; else refreshed++;
+                pending = null; misses = 0;
+            } else if (pending.kind == Kind.BUY && !Arrays.equals(frame.names, previousNames)) {
                 pending = null; misses = 0;
             } else if (++misses >= 8 && frame.gold == previousGold) {
                 // A tap that had no effect can be retried after several readable frames.
                 pending = null; misses = 0;
             } else return decision(Kind.WAIT, -1, "等待" + (pending.kind == Kind.BUY ? "购买" : "刷新") + "结果");
         }
-        for (String target : targets) for (int i = 0; i < 5; i++) if (target.equals(frame.names[i])) {
+        List<Integer> slots = new ArrayList<>();
+        int balance = frame.gold;
+        for (String target : targets) for (int i = 0; i < 5; i++) if (target.equals(frame.names[i]) && !slots.contains(i)) {
             int cost = frame.costs[i];
-            if (cost < 1 || cost > 10) return decision(Kind.WAIT, -1, "等待读取目标费用");
-            if (frame.gold - cost < reserve) return decision(Kind.WAIT, -1, "等待金币达到购买条件");
-            return decision(Kind.BUY, i, "购买 " + target + "（第 " + (i + 1) + " 格）");
+            if (cost < 1 || cost > 10) return slots.isEmpty() ? decision(Kind.WAIT, -1, "等待读取目标费用") : batch(slots);
+            if (balance - cost < reserve) return slots.isEmpty() ? decision(Kind.WAIT, -1, "等待金币达到购买条件") : batch(slots);
+            slots.add(i); balance -= cost;
         }
+        if (!slots.isEmpty()) return batch(slots);
         if (!autoRefresh) return decision(Kind.WAIT, -1, "当前没有目标，等待你手动刷新");
         if (frame.gold - 2 < reserve) return decision(Kind.WAIT, -1, "等待金币达到刷新条件");
         return decision(Kind.REFRESH, -1, "没有目标，刷新商店");
@@ -63,13 +75,20 @@ public final class BuyPolicy {
     public void sent(Decision action, Frame frame) {
         if (action.kind != Kind.BUY && action.kind != Kind.REFRESH) throw new IllegalArgumentException();
         pending = action; previousGold = frame.gold;
-        pendingCost = action.kind == Kind.BUY ? frame.costs[action.slot] : 2;
+        pendingCost = 0;
+        if (action.kind == Kind.BUY) {
+            for (int slot : action.slots) pendingCost += frame.costs[slot];
+        } else pendingCost = 2;
         previousNames = frame.names.clone();
         misses = 0;
     }
     public void shopClosed() { pending = null; previousNames = null; misses = 0; }
     public void setAutoRefresh(boolean enabled) { autoRefresh = enabled; }
     public boolean isAutoRefresh() { return autoRefresh; }
+    private static Decision batch(List<Integer> slots) {
+        int[] ordered = slots.stream().mapToInt(Integer::intValue).toArray();
+        return new Decision(ordered, "连续购买 " + ordered.length + " 张目标卡");
+    }
     private static Decision decision(Kind kind, int slot, String message) { return new Decision(kind, slot, message); }
     public static List<String> parseTargets(String input) {
         LinkedHashSet<String> names = new LinkedHashSet<>();
