@@ -36,7 +36,8 @@ public class PolicyCheck {
         check(p.decide(f).kind == WAIT, "Closed shop waits without disabling");
         check(p.decide(frame(68, "可酷伯")).kind == BUY, "Reopening shop resumes automatically");
         p = new BuyPolicy(List.of("可酷伯"), 10, true);
-        check(p.decide(frame(10, "可酷伯")).kind == WAIT, "Gold reserve waits without disabling");
+        check(p.decide(frame(10, "可酷伯")).kind == BUY, "Gold reserve never blocks an affordable target");
+        check(p.decide(frame(0, "可酷伯")).kind == WAIT, "Actual insufficient gold still blocks a purchase");
         check(p.decide(frame(12, "可酷伯")).kind == BUY, "Income resumes purchases");
         p = new BuyPolicy(List.of("可酷伯"), 0, true);
         f = frame(20); f.readable = false;
@@ -62,11 +63,11 @@ public class PolicyCheck {
         check(Arrays.equals(p.decide(frame(2, "维迦", "可酷伯", "可酷伯")).slots, new int[]{1,2}), "Batch never exceeds gold budget");
         p = new BuyPolicy(List.of("凯尔"), 1, false);
         f = frame(12, "凯尔", "凯尔", "凯尔"); Arrays.fill(f.costs, 5);
-        check(Arrays.equals(p.decide(f).slots, new int[]{0,1}), "Expensive batch respects reserve");
+        check(Arrays.equals(p.decide(f).slots, new int[]{0,1}), "Expensive batch respects actual gold");
         p = new BuyPolicy(List.of("可酷伯"), 0, true);
         p.setReserve(50);
-        check(p.decide(frame(50, "可酷伯")).kind == WAIT, "Raised live reserve prevents a purchase");
-        check(p.decide(frame(51, "可酷伯")).kind == BUY, "Purchase may reach exactly the reserve");
+        check(p.decide(frame(50, "可酷伯")).kind == BUY, "Raised live reserve only restricts refresh");
+        check(p.decide(frame(1, "可酷伯")).kind == BUY, "An affordable target can spend below the reserve");
         check(p.decide(frame(51, "洛")).kind == WAIT, "Refresh may not cross the reserve");
         check(p.decide(frame(52, "洛")).kind == REFRESH, "Refresh may reach exactly the reserve");
         p.setReserve(0);
@@ -116,6 +117,15 @@ public class PolicyCheck {
         f = row(18, "可酷伯");
         check(p.decide(f).kind == WAIT, "A transient closed-shop reading cannot bypass the refresh barrier");
         check(p.decide(f).kind == BUY, "Buy after the new visible row settles");
+        p = new BuyPolicy(List.of("蕾欧娜", "洛"), 60, true);
+        f = row(11, "苍蓝哨戒", "蕾欧娜", "卡尔玛", "洛", "凯特琳"); f.costs[4] = 2;
+        d = p.decide(f);
+        check(d.kind == BUY && Arrays.equals(d.slots, new int[]{1,3}), "The reported 11-gold shop buys both targets with a reserve of 60");
+        p.sent(d, f); f.gold = 9; f.names[1] = ""; f.names[3] = ""; f.costs[1] = f.costs[3] = 0;
+        check(p.decide(f).kind == WAIT && p.bought == 2, "After buying below reserve, automatic refresh remains blocked");
+        p = new BuyPolicy(List.of("凯尔"), 60, true);
+        f = row(11, "凯尔", "凯尔", "凯尔"); Arrays.fill(f.costs, 5);
+        check(Arrays.equals(p.decide(f).slots, new int[]{0,1}), "Batch purchases ignore reserve but never exceed current gold");
         System.out.println("Policy checks passed.");
     }
 }

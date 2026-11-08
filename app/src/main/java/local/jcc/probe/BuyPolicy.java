@@ -81,7 +81,7 @@ public final class BuyPolicy {
         for (String target : targets) for (int i = 0; i < 5; i++) if (target.equals(frame.names[i]) && !slots.contains(i)) {
             int cost = frame.costs[i];
             if (cost < 1 || cost > 10) return slots.isEmpty() ? decision(Kind.WAIT, -1, "等待读取目标费用") : batch(slots);
-            if (balance - cost < reserve) return slots.isEmpty() ? decision(Kind.WAIT, -1, "等待金币达到购买条件") : batch(slots);
+            if (balance < cost) return slots.isEmpty() ? decision(Kind.WAIT, -1, "金币不足以购买目标卡") : batch(slots);
             slots.add(i); balance -= cost;
         }
         if (!slots.isEmpty()) return batch(slots);

@@ -64,14 +64,14 @@ final class ScanOverlay {
         panel.addView(assistSwitch, new LinearLayout.LayoutParams(-1, dp(44)));
         panel.addView(refreshSwitch, new LinearLayout.LayoutParams(-1, dp(44)));
         LinearLayout reserveRow = new LinearLayout(service); reserveRow.setGravity(Gravity.CENTER_VERTICAL);
-        TextView reserveLabel = text("保留金币", 13, Color.WHITE);
+        TextView reserveLabel = text("刷新留金", 13, Color.WHITE);
         reserveRow.addView(reserveLabel, new LinearLayout.LayoutParams(0, dp(52), 1)); reserveLabel.setGravity(Gravity.CENTER_VERTICAL);
         reserveInput = new EditText(service); reserveInput.setSingleLine(true); reserveInput.setTextSize(15);
         reserveInput.setInputType(android.text.InputType.TYPE_CLASS_NUMBER); reserveInput.setTextColor(Color.rgb(232, 196, 120));
         reserveInput.setGravity(Gravity.CENTER); reserveInput.setPadding(0, 0, 0, 0);
         reserveInput.setSelectAllOnFocus(true); reserveInput.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(3)});
         reserveInput.setBackground(background(Color.rgb(17, 25, 37), 8, Color.rgb(61, 77, 97)));
-        reserveInput.setText(String.valueOf(service.goldReserve())); reserveInput.setContentDescription("保留金币输入框");
+        reserveInput.setText(String.valueOf(service.goldReserve())); reserveInput.setContentDescription("自动刷新保留金币，不限制购买目标卡");
         reserveRow.addView(reserveInput, new LinearLayout.LayoutParams(dp(56), dp(44)));
         LinearLayout steps = new LinearLayout(service); steps.setOrientation(LinearLayout.VERTICAL);
         TextView up = text("▲", 12, Color.rgb(232, 196, 120)); up.setGravity(Gravity.CENTER); up.setContentDescription("增加保留金币到下一档");

@@ -102,7 +102,7 @@ public class MainActivity extends Activity {
         space(options, 10);
         LinearLayout reserveRow = row();
         LinearLayout reserveText = column(); reserveText.addView(label("保留金币", 15, INK));
-        reserveText.addView(label("0 表示不保留", 12, MUTED));
+        reserveText.addView(label("仅限制自动刷新", 12, MUTED));
         reserveRow.addView(reserveText, new LinearLayout.LayoutParams(0, -2, 1));
         goldReserve = input("0"); goldReserve.setSingleLine(true); goldReserve.setGravity(Gravity.CENTER);
         goldReserve.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
@@ -145,7 +145,7 @@ public class MainActivity extends Activity {
             update();
         }); addButton(diagnostics, capture);
         Button preview = button("查看最近截图", false); preview.setOnClickListener(v -> showPreview()); addButton(diagnostics, preview);
-        TextView version = label("v0.9.4  ·  小米 14  ·  本地离线识别", 11, MUTED);
+        TextView version = label("v0.9.5  ·  小米 14  ·  本地离线识别", 11, MUTED);
         version.setGravity(Gravity.CENTER); space(layout, 22); layout.addView(version);
 
         FrameLayout centered = new FrameLayout(this);

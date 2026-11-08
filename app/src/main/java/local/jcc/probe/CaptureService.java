@@ -58,7 +58,7 @@ public class CaptureService extends AccessibilityService {
     @Override protected void onServiceConnected() {
         instance = this;
         if (trace == null) trace = new AssistTrace(this);
-        record("service connected version=" + "0.9.4");
+        record("service connected version=" + "0.9.5");
         handler.removeCallbacks(health); handler.postDelayed(health, 1000);
         status("服务已连接。可显示悬浮窗进行商店识别。");
     }
@@ -102,7 +102,7 @@ public class CaptureService extends AccessibilityService {
         generation++; handler.removeCallbacks(scanNext);
         getSharedPreferences("probe", MODE_PRIVATE).edit().putInt("reserve", value).apply();
         if (policy != null) policy.setReserve(value);
-        status("保留金币：" + value);
+        status("自动刷新保留金币：" + value + "，不限制目标卡购买");
         if (scanning && !choosingDeck) handler.post(scanNext);
     }
     void startScanning() {
