@@ -1,8 +1,8 @@
 package local.jcc.probe;
 
-/** Exact native-pixel text templates, used only for the five user-labelled reference names and shop button. */
+/** Exact native-pixel text templates for user-labelled reference names and the shop button. */
 public final class PhoneVision {
-    public static final String[] NAMES = {"可酷伯", "维迦", "洛", "韦鲁斯", "芸阿娜"};
+    public static final String[] NAMES = {"可酷伯", "维迦", "洛", "韦鲁斯", "芸阿娜", "黛安娜"};
     public static byte[] mask(int[] pixels, int width, int[] rect) { return ScreenGuard.crop(pixels, width, rect); }
     public static final class Template {
         final int width, height, stride, ink;

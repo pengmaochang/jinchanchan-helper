@@ -19,6 +19,12 @@ public class PrepareTemplates {
             int[] sample = live.getRGB(0, 0, live.getWidth(), live.getHeight(), null, 0, live.getWidth());
             Files.write(directory.resolve("fee3.bin"), PhoneVision.mask(sample, live.getWidth(), PhoneLayout.cost(4)));
         }
+        if (args.length > 2) {
+            BufferedImage diana = ImageIO.read(Path.of(args[2]).toFile());
+            if (!PhoneLayout.accepts(diana.getWidth(), diana.getHeight())) throw new IllegalArgumentException();
+            int[] sample = diana.getRGB(0, 0, diana.getWidth(), diana.getHeight(), null, 0, diana.getWidth());
+            Files.write(directory.resolve("name5.bin"), PhoneVision.mask(sample, diana.getWidth(), PhoneLayout.name(2)));
+        }
         System.out.println("Native-pixel reference templates generated.");
     }
 }

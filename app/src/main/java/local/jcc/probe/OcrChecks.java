@@ -43,6 +43,32 @@ public class OcrChecks extends Instrumentation {
                 if (i > 0 && !java.util.Arrays.equals(f.costs, expectedCosts[i])) failures.append(i).append("费用不匹配；");
             }
             if (failures.length() > 0) throw new AssertionError(failures.toString());
+            File extra = new File(getTargetContext().getExternalFilesDir(null), "fixture4.jpg");
+            if (extra.isFile()) {
+                Bitmap image = BitmapFactory.decodeFile(extra.getAbsolutePath());
+                if (image == null) throw new AssertionError("新样本读取失败");
+                try {
+                    BuyPolicy.Frame f = ocr.analyze(image);
+                    ShopOcr.Reading direct = ocr.readCardName(image, 2);
+                    result.putString("new_sample", f.summary() + " readable=" + f.readable + " shop=" + f.shopOpen +
+                        " costs=" + java.util.Arrays.toString(f.costs) + " problem=" + f.problem + " direct_slot3=" + direct.text);
+                    if (!"黛安娜".equals(f.names[2])) throw new AssertionError("新样本第三格未识别为黛安娜");
+                    BuyPolicy.Decision action = new BuyPolicy(java.util.List.of("黛安娜"), 0, false).decide(f);
+                    if (action.kind != BuyPolicy.Kind.BUY || !java.util.Arrays.equals(action.slots, new int[]{2}))
+                        throw new AssertionError("黛安娜未产生第三格购买决策");
+                    int[] source = PhoneLayout.name(2);
+                    Bitmap nameCrop = Bitmap.createBitmap(image, source[0], source[1], source[2], source[3]);
+                    try {
+                        for (int slot = 0; slot < 5; slot++) {
+                            Bitmap shifted = image.copy(Bitmap.Config.ARGB_8888, true);
+                            try {
+                                new Canvas(shifted).drawBitmap(nameCrop, PhoneLayout.NAME_X[slot], PhoneLayout.NAME_Y, null);
+                                if (!"黛安娜".equals(ocr.analyze(shifted).names[slot])) throw new AssertionError("黛安娜卡位迁移失败：" + slot);
+                            } finally { shifted.recycle(); }
+                        }
+                    } finally { nameCrop.recycle(); }
+                } finally { image.recycle(); }
+            }
             Bitmap a = BitmapFactory.decodeFile(new File(getTargetContext().getExternalFilesDir(null), "fixture1.jpg").getAbsolutePath());
             Bitmap b = BitmapFactory.decodeFile(new File(getTargetContext().getExternalFilesDir(null), "fixture3.png").getAbsolutePath());
             if (a == null || b == null) throw new AssertionError("测速样本缺失");

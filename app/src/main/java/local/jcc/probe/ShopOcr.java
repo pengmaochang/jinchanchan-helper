@@ -13,7 +13,7 @@ import java.util.concurrent.TimeUnit;
 /** Bundled Chinese OCR; crops native phone pixels, without resizing or binarizing. */
 final class ShopOcr implements AutoCloseable {
     private final TextRecognizer recognizer = TextRecognition.getClient(new ChineseTextRecognizerOptions.Builder().build());
-    private final PhoneVision.Template[] templates = new PhoneVision.Template[5];
+    private final PhoneVision.Template[] templates = new PhoneVision.Template[PhoneVision.NAMES.length];
     private final PhoneVision.Template refreshTemplate;
     private final PhoneVision.Template[] feeTemplates = new PhoneVision.Template[3];
     private PhoneVision.Template observedRefresh;
@@ -23,7 +23,7 @@ final class ShopOcr implements AutoCloseable {
     boolean cachedLastFrame() { return cached; }
 
     ShopOcr(Context context) {
-        for (int i = 0; i < 5; i++) templates[i] = new PhoneVision.Template(asset(context, "templates/name" + i + ".bin"), PhoneLayout.NAME_W, PhoneLayout.NAME_H);
+        for (int i = 0; i < templates.length; i++) templates[i] = new PhoneVision.Template(asset(context, "templates/name" + i + ".bin"), PhoneLayout.NAME_W, PhoneLayout.NAME_H);
         refreshTemplate = new PhoneVision.Template(asset(context, "templates/refresh.bin"), PhoneLayout.REFRESH[2], PhoneLayout.REFRESH[3]);
         for (int i = 0; i < 3; i++) feeTemplates[i] = new PhoneVision.Template(asset(context, "templates/fee" + (i + 1) + ".bin"), 35, 57);
     }
