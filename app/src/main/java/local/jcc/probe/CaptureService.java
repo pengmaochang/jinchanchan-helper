@@ -26,29 +26,22 @@ public class CaptureService extends AccessibilityService {
     private long generation;
     private String foreground = "";
     private ScanOverlay overlay;
-    private byte[][] templates;
-    private int targetIndex;
+    private ShopOcr recognizer;
+    private BuyPolicy policy;
+    private boolean previewOnly;
+    private long lastScreenshot;
+    private int changedFrames;
+    private java.util.List<String> targets;
     private final Runnable scanNext = this::scan;
     private final Runnable capture = this::captureNow;
     @Override protected void onServiceConnected() {
         instance = this;
         status("服务已连接。可显示悬浮窗进行商店识别。");
-        try {
-            templates = new byte[5][];
-            for (int i = 0; i < 5; i++) try (InputStream stream = getAssets().open("templates/name" + i + ".bin")) {
-                ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-                byte[] block = new byte[4096];
-                int length;
-                while ((length = stream.read(block)) != -1) bytes.write(block, 0, length);
-                templates[i] = bytes.toByteArray();
-                if (templates[i].length != ShopVision.WIDTH * ShopVision.HEIGHT) throw new IOException("模板尺寸不正确");
-            }
-        } catch (IOException e) { templates = null; status("模板加载失败：" + e.getMessage()); }
     }
     @Override public void onAccessibilityEvent(AccessibilityEvent event) {
         if (event.getEventType() != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED || event.getPackageName() == null) return;
         String pkg = event.getPackageName().toString();
-        // Our overlay is not a navigation change. Any other app, including System UI, pauses the loop.
+        // Ignore our overlay; the current application window is rechecked before each gesture.
         if (pkg.equals(getPackageName())) {
             if (event.getClassName() != null && event.getClassName().toString().equals(MainActivity.class.getName())) {
                 foreground = pkg;
@@ -57,7 +50,8 @@ public class CaptureService extends AccessibilityService {
             return;
         }
         foreground = pkg;
-        if (scanning && !pkg.equals("com.tencent.jk")) stopScanning("已离开游戏，识别暂停");
+        if (scanning && !isGamePackage(pkg) && !pkg.equals("com.android.systemui"))
+            stopScanning("已离开游戏，自动操作暂停：" + pkg);
     }
     @Override public void onInterrupt() { stopScanning("无障碍服务被中断"); }
     @Override public void onConfigurationChanged(android.content.res.Configuration config) {
@@ -73,16 +67,49 @@ public class CaptureService extends AccessibilityService {
         } catch (RuntimeException e) { status("显示悬浮窗失败：" + e.getMessage()); }
     }
     void hideOverlay() { stopScanning("悬浮窗已关闭"); if (overlay != null) { overlay.remove(); overlay = null; } }
+    void setAutoRefresh(boolean enabled) {
+        getSharedPreferences("probe", MODE_PRIVATE).edit().putBoolean("autoRefresh", enabled).apply();
+        if (policy != null) policy.setAutoRefresh(enabled);
+        status(enabled ? "自动刷新已开启" : "自动刷新已关闭，等待手动刷新");
+    }
     void startScanning() {
         if (scanning) return;
-        if (templates == null) { status("模板未加载，无法开始"); return; }
-        if (!foreground.equals("com.tencent.jk")) { status("请先切到金铲铲游戏，再在悬浮窗点开始"); return; }
-        targetIndex = getSharedPreferences("probe", MODE_PRIVATE).getInt("target", 0);
-        if (targetIndex < 0 || targetIndex > 4) targetIndex = 0;
+        if (!isGameForeground()) { status("请在金铲铲游戏中开始；当前包名：" + foreground); return; }
+        android.content.SharedPreferences prefs = getSharedPreferences("probe", MODE_PRIVATE);
+        try {
+            targets = BuyPolicy.parseTargets(prefs.getString("targets", "可酷伯"));
+            if (targets.isEmpty()) throw new IllegalArgumentException("请先填写目标名字");
+            policy = new BuyPolicy(targets, prefs.getInt("reserve", 0), prefs.getBoolean("autoRefresh", false));
+        } catch (IllegalArgumentException e) { status(e.getMessage()); return; }
+        previewOnly = prefs.getBoolean("previewOnly", false);
         scanning = true;
+        changedFrames = 0;
         generation++;
-        status("识别中 · 目标：" + ShopVision.NAMES[targetIndex] + "（不自动点击）");
+        status("正在加载中文 OCR · 目标：" + targets);
         scan();
+    }
+    private static boolean isGamePackage(String pkg) { return pkg.equals("com.tencent.jkchess") || pkg.equals("com.tencent.jk"); }
+    private boolean isGameForeground() {
+        try {
+            for (android.view.accessibility.AccessibilityWindowInfo window : getWindows()) {
+                if (window.getType() != android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION ||
+                    !(window.isActive() || window.isFocused())) continue;
+                android.view.accessibility.AccessibilityNodeInfo root = window.getRoot();
+                if (root == null) continue;
+                try {
+                    if (root.getPackageName() != null) {
+                        foreground = root.getPackageName().toString();
+                        return isGamePackage(foreground);
+                    }
+                } finally { root.recycle(); }
+            }
+            android.view.accessibility.AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root != null) try {
+                if (root.getPackageName() != null) { foreground = root.getPackageName().toString(); return isGamePackage(foreground); }
+            } finally { root.recycle(); }
+        } catch (RuntimeException e) { android.util.Log.w("JccAssist", "读取前台窗口失败", e); }
+        // Never authorize a gesture solely from an old event's package name.
+        return false;
     }
     void stopScanning(String reason) {
         scanning = false; generation++;
@@ -91,12 +118,15 @@ public class CaptureService extends AccessibilityService {
     }
     private void scan() {
         if (!scanning) return;
-        if (!foreground.equals("com.tencent.jk")) { stopScanning("前台游戏状态未知，请重新进入游戏"); return; }
+        if (!isGameForeground()) { stopScanning("当前前台不是游戏，已暂停：" + foreground); return; }
         if (overlay != null && overlay.overlapsShop()) {
             stopScanning("悬浮窗遮住商店：请拖到画面下半部再开始"); return;
         }
-        if (busy) { handler.postDelayed(scanNext, 400); return; }
+        if (busy) { handler.postDelayed(scanNext, 100); return; }
+        long remaining = 360 - (SystemClock.elapsedRealtime() - lastScreenshot);
+        if (remaining > 0) { handler.postDelayed(scanNext, remaining); return; }
         busy = true;
+        lastScreenshot = SystemClock.elapsedRealtime();
         final long token = generation, started = SystemClock.elapsedRealtime();
         try {
             takeScreenshot(Display.DEFAULT_DISPLAY, getMainExecutor(), new TakeScreenshotCallback() {
@@ -124,25 +154,102 @@ public class CaptureService extends AccessibilityService {
         } catch (Exception e) { busy = false; stopScanning("截图调用失败：" + e.getMessage()); }
     }
     private void analyze(Bitmap image, long token, long started) {
-        ShopVision.Result result = null;
+        BuyPolicy.Frame result = null;
+        byte[][] guard = null;
         String error = null;
         try {
+            if (recognizer == null) recognizer = new ShopOcr(this);
+            result = recognizer.analyze(image);
             int w = image.getWidth(), h = image.getHeight();
             int[] pixels = new int[w * h]; image.getPixels(pixels, 0, w, 0, 0, w, h);
-            result = ShopVision.analyze(pixels, w, h, templates, ShopVision.NAMES, templates[targetIndex]);
-        } catch (Exception e) { error = e.getMessage(); }
+            if (result.layoutValid && result.shopOpen) guard = ScreenGuard.capture(pixels, w, h);
+        } catch (Throwable e) { error = e.toString(); }
         finally { image.recycle(); }
-        final ShopVision.Result answer = result;
+        final BuyPolicy.Frame answer = result;
+        final byte[][] signature = guard;
         final String failure = error;
         handler.post(() -> {
             busy = false;
             if (!scanning || token != generation) return;
             if (answer == null) { stopScanning("识别失败：" + failure); return; }
-            if (!answer.layoutValid) { stopScanning(answer.summary()); return; }
-            status("目标：" + ShopVision.NAMES[targetIndex] + " · 仅识别\n" + answer.summary() +
-                "\n单次耗时 " + (SystemClock.elapsedRealtime() - started) + " ms");
-            handler.postDelayed(scanNext, 400);
+            if (!answer.layoutValid) { stopScanning("请使用当前横屏游戏布局"); return; }
+            if (previewOnly) {
+                status("仅识别 · " + answer.summary() + "\n商店=" + answer.shopOpen + " 可读=" + answer.readable +
+                    " · " + (SystemClock.elapsedRealtime() - started) + "ms");
+                handler.postDelayed(scanNext, 100); return;
+            }
+            BuyPolicy.Decision action = policy.decide(answer);
+            String stats = "\n已买 " + policy.bought + " · 已刷新 " + policy.refreshed;
+            if (action.kind == BuyPolicy.Kind.STOP) { stopScanning(action.message + stats); return; }
+            status(action.message + "\n" + answer.summary() + stats);
+            if (action.kind == BuyPolicy.Kind.WAIT) { handler.postDelayed(scanNext, 100); return; }
+            long delay = Math.max(40, 360 - (SystemClock.elapsedRealtime() - lastScreenshot));
+            handler.postDelayed(() -> preflight(token, action, answer, signature), delay);
         });
+    }
+    private void preflight(long token, BuyPolicy.Decision action, BuyPolicy.Frame frame, byte[][] before) {
+        if (!scanning || token != generation) return;
+        if (!isGameForeground()) { stopScanning("已离开游戏"); return; }
+        if (busy) { stopScanning("截图任务冲突，请重新开始"); return; }
+        busy = true; lastScreenshot = SystemClock.elapsedRealtime();
+        try {
+            takeScreenshot(Display.DEFAULT_DISPLAY, getMainExecutor(), new TakeScreenshotCallback() {
+                @Override public void onSuccess(ScreenshotResult result) {
+                    Bitmap hardware = null, image = null;
+                    try (HardwareBuffer buffer = result.getHardwareBuffer()) {
+                        hardware = Bitmap.wrapHardwareBuffer(buffer, result.getColorSpace());
+                        if (hardware == null) throw new IOException("截图为空");
+                        image = hardware.copy(Bitmap.Config.ARGB_8888, false);
+                        if (image == null) throw new IOException("截图复制失败");
+                        int width = image.getWidth(), height = image.getHeight();
+                        int[] p = new int[width * height]; image.getPixels(p, 0, width, 0, 0, width, height);
+                        byte[][] after = ScreenGuard.capture(p, width, height);
+                        busy = false;
+                        if (!scanning || token != generation) return;
+                        if (!ScreenGuard.same(before, after) || (overlay != null && overlay.overlapsShop())) {
+                            if (++changedFrames >= 8) { stopScanning("画面持续变化，无法确认点击位置"); return; }
+                            status("画面已变化，重新识别；未点击"); handler.postDelayed(scanNext, 100); return;
+                        }
+                        changedFrames = 0;
+                        handler.postDelayed(() -> tap(token, action, frame, width, height), 40 + java.util.concurrent.ThreadLocalRandom.current().nextInt(61));
+                    } catch (Throwable e) { busy = false; if (token == generation) stopScanning("点击前校验失败：" + e); }
+                    finally { if (image != null) image.recycle(); if (hardware != null) hardware.recycle(); }
+                }
+                @Override public void onFailure(int error) { busy = false; if (token == generation) stopScanning("点击前截图失败：" + error); }
+            });
+        } catch (Exception e) { busy = false; stopScanning("点击前截图调用失败：" + e); }
+    }
+    private void tap(long token, BuyPolicy.Decision action, BuyPolicy.Frame frame, int width, int height) {
+        if (!scanning || token != generation) return;
+        if (action.kind == BuyPolicy.Kind.REFRESH && !policy.isAutoRefresh()) {
+            status("自动刷新已关闭，取消待执行刷新"); handler.postDelayed(scanNext, 100); return;
+        }
+        if (!isGameForeground()) { stopScanning("已离开游戏，点击已取消"); return; }
+        if (overlay != null && overlay.overlapsShop()) { stopScanning("悬浮窗遮挡商店，点击已取消"); return; }
+        java.util.concurrent.ThreadLocalRandom random = java.util.concurrent.ThreadLocalRandom.current();
+        float x = (action.kind == BuyPolicy.Kind.BUY ? ShopVision.LEFT[action.slot] + 140 : 1915) + random.nextInt(-7, 8);
+        float y = (action.kind == BuyPolicy.Kind.BUY ? 240 : 605) + random.nextInt(-9, 10);
+        if (overlay != null && overlay.blocksPoint(x * width / 2048f, y * height / 920f)) {
+            stopScanning("悬浮窗遮住点击位置，请移动后重新开始"); return;
+        }
+        android.graphics.Path path = new android.graphics.Path();
+        path.moveTo(x * width / 2048f, y * height / 920f);
+        android.accessibilityservice.GestureDescription gesture = new android.accessibilityservice.GestureDescription.Builder()
+            .addStroke(new android.accessibilityservice.GestureDescription.StrokeDescription(path, 0, 35 + random.nextInt(31))).build();
+        try {
+            boolean accepted = dispatchGesture(gesture, new GestureResultCallback() {
+                @Override public void onCompleted(android.accessibilityservice.GestureDescription g) {
+                    if (!scanning || token != generation) return;
+                    policy.sent(action, frame);
+                    android.util.Log.i("JccAssist", "Gesture completed: " + action.message);
+                    handler.postDelayed(scanNext, 60);
+                }
+                @Override public void onCancelled(android.accessibilityservice.GestureDescription g) {
+                    if (token == generation) stopScanning("手势被取消，已暂停");
+                }
+            }, handler);
+            if (!accepted) stopScanning("系统拒绝手势，请确认无障碍服务已重新启用");
+        } catch (RuntimeException e) { stopScanning("点击失败：" + e.getMessage()); }
     }
     void scheduleCapture() {
         stopScanning("连续识别已暂停");
@@ -154,6 +261,7 @@ public class CaptureService extends AccessibilityService {
     private void status(String value) {
         getSharedPreferences("probe", MODE_PRIVATE).edit().putString("status", value).apply();
         if (overlay != null) overlay.update(value, scanning);
+        android.util.Log.i("JccAssist", value);
     }
     private void captureNow() {
         status("正在截取并保存……");
@@ -233,6 +341,7 @@ public class CaptureService extends AccessibilityService {
         if (overlay != null) { overlay.remove(); overlay = null; }
         handler.removeCallbacks(capture);
         if (instance == this) instance = null;
+        worker.execute(() -> { if (recognizer != null) { recognizer.close(); recognizer = null; } });
         worker.shutdown();
         super.onDestroy();
     }

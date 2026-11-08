@@ -15,6 +15,7 @@ final class ScanOverlay {
     private final TextView status;
     private final TextView handle;
     private final LinearLayout controls;
+    private final Switch refreshToggle;
     private boolean attached, compact;
     private float startX, startY;
     private int originX, originY;
@@ -30,7 +31,7 @@ final class ScanOverlay {
         background.setCornerRadius(dp(service, 12));
         root.setBackground(background);
         handle = new TextView(service);
-        handle.setText("金铲铲识别 · 拖动 / 点此收起");
+        handle.setText("金铲铲助手 · 拖动 / 点此收起");
         handle.setTextSize(12);
         handle.setTextColor(Color.WHITE);
         handle.setPadding(0, 4, 0, 8);
@@ -38,8 +39,15 @@ final class ScanOverlay {
         status = new TextView(service);
         status.setTextColor(Color.rgb(180, 224, 255));
         status.setTextSize(12);
-        status.setText("已暂停 · 仅识别，不点击");
+        status.setText("已暂停 · 开始后按目标购买");
+        status.setMaxLines(4);
+        status.setEllipsize(android.text.TextUtils.TruncateAt.END);
         root.addView(status);
+        refreshToggle = new Switch(service);
+        refreshToggle.setText("自动刷新"); refreshToggle.setTextSize(12); refreshToggle.setTextColor(Color.WHITE);
+        refreshToggle.setChecked(service.getSharedPreferences("probe", Context.MODE_PRIVATE).getBoolean("autoRefresh", false));
+        refreshToggle.setOnCheckedChangeListener((button, checked) -> service.setAutoRefresh(checked));
+        root.addView(refreshToggle);
         controls = new LinearLayout(service);
         addButton(service, "开始", service::startScanning);
         addButton(service, "暂停", () -> service.stopScanning("已手动暂停"));
@@ -69,7 +77,8 @@ final class ScanOverlay {
                     compact = !compact;
                     status.setVisibility(compact ? View.GONE : View.VISIBLE);
                     controls.setVisibility(compact ? View.GONE : View.VISIBLE);
-                    handle.setText(compact ? "识别助手 · 点击展开" : "金铲铲识别 · 拖动 / 点此收起");
+                    refreshToggle.setVisibility(compact ? View.GONE : View.VISIBLE);
+                    handle.setText(compact ? "金铲铲助手 · 点击展开" : "金铲铲助手 · 拖动 / 点此收起");
                     windows.updateViewLayout(root, params);
                 }
                 return true;
@@ -101,6 +110,11 @@ final class ScanOverlay {
     void update(String message, boolean running) {
         status.setText(message);
         if (compact) handle.setText((running ? "识别中" : "已暂停") + " · 点击展开");
+    }
+    boolean blocksPoint(float x, float y) {
+        if (!attached) return false;
+        int[] xy = new int[2]; root.getLocationOnScreen(xy);
+        return x >= xy[0] && x < xy[0] + root.getWidth() && y >= xy[1] && y < xy[1] + root.getHeight();
     }
     boolean overlapsShop() {
         if (!attached) return false;

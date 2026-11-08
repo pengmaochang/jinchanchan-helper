@@ -1,5 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="local.jcc.probe">
-    <application android:label="金铲铲截图验证" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:allowBackup="false" android:supportsRtl="true">
+    <instrumentation android:name=".OcrChecks" android:targetPackage="local.jcc.probe" android:label="Read-only OCR fixture check" />
+    <application android:label="金铲铲截图验证" android:extractNativeLibs="true" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:allowBackup="false" android:supportsRtl="true">
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

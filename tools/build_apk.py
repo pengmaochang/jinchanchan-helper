@@ -1,4 +1,4 @@
-"""Build the dependency-free probe with official Android SDK tools, without Gradle."""
+"""Build with official SDK tools and the pinned OCR AAR, without Gradle."""
 from pathlib import Path
 import os
 import subprocess
@@ -18,6 +18,10 @@ def main():
     BUILD.mkdir(parents=True, exist_ok=True)
     classes = BUILD / 'classes'
     classes.mkdir(exist_ok=True)
+    ocr = TOOLS / 'ocr'
+    ocr_jar = ocr / 'aar/classes.jar'
+    if not ocr_jar.is_file() or not (ocr / 'assets/tessdata/chi_sim.traineddata').is_file():
+        raise RuntimeError('Run python tools/prepare_ocr.py first')
     os.environ['JAVA_HOME'] = str(JDK)
     os.environ['PATH'] = str(JDK / 'bin') + os.pathsep + os.environ['PATH']
     resources = BUILD / 'resources.zip'
@@ -25,15 +29,16 @@ def main():
     raw = BUILD / 'raw.apk'
     run(bt / 'aapt2.exe', 'link', '-o', raw, '-I', sdk, '--manifest',
         ROOT / 'app/src/main/AndroidManifest.xml', '--min-sdk-version', '30',
-        '--target-sdk-version', '35', '--version-code', '2', '--version-name', '0.2',
-        '--rename-manifest-package', 'local.jcc.probe', '-A', ROOT / 'app/src/main/assets', resources)
+        '--target-sdk-version', '35', '--version-code', '3', '--version-name', '0.3',
+        '--rename-manifest-package', 'local.jcc.probe', '-A', ROOT / 'app/src/main/assets',
+        '-A', ocr / 'assets', resources)
     sources = list((ROOT / 'app/src/main/java').rglob('*.java'))
-    run(JDK / 'bin/javac.exe', '-encoding', 'UTF-8', '--release', '17', '-classpath', sdk,
+    run(JDK / 'bin/javac.exe', '-encoding', 'UTF-8', '--release', '17', '-classpath', str(sdk) + os.pathsep + str(ocr_jar),
         '-d', classes, *sources)
     dex = BUILD / 'dex'
     dex.mkdir(exist_ok=True)
     run(JDK / 'bin/java.exe', '-cp', bt / 'lib/d8.jar', 'com.android.tools.r8.D8',
-        '--lib', sdk, '--min-api', '30', '--output', dex, *classes.rglob('*.class'))
+        '--lib', sdk, '--min-api', '30', '--output', dex, ocr_jar, *classes.rglob('*.class'))
     unsigned = BUILD / 'unsigned.apk'
     # Repack instead of appending to aapt2's ZIP: keep local/central headers consistent.
     with zipfile.ZipFile(raw) as source, zipfile.ZipFile(unsigned, 'w') as archive:
@@ -42,6 +47,8 @@ def main():
                 zipfile.ZIP_STORED if entry.filename == 'resources.arsc' else zipfile.ZIP_DEFLATED)
         for file in dex.glob('*.dex'):
             archive.write(file, file.name)
+        for file in (ocr / 'aar/jni/arm64-v8a').glob('*.so'):
+            archive.write(file, 'lib/arm64-v8a/' + file.name, compress_type=zipfile.ZIP_DEFLATED)
     aligned = BUILD / 'aligned.apk'
     run(bt / 'zipalign.exe', '-f', '4', unsigned, aligned)
     key = TOOLS / 'probe-debug.jks'
