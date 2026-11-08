@@ -29,7 +29,7 @@ public class MainActivity extends Activity {
         layout.setOrientation(LinearLayout.VERTICAL);
         layout.setPadding(28, 64, 28, 28);
         TextView title = new TextView(this);
-        title.setText("金铲铲助手 v0.8.3 · 极速测试\n\n半透明图标点击展开，点外部收起。选择卡组，切换自动拿卡和自动刷新。开启后开商店自动买、关商店待命。\n\n去除额外等待，按系统截图极限运行。短点击可能漏点，会补买；只用足够新的画面派发。仅适配小米 14 的 2670×1200 横屏。\n");
+        title.setText("金铲铲助手 v0.8.4 · 极速测试\n\n半透明图标点击展开，点外部收起。选择卡组，切换自动拿卡和自动刷新。开启后开商店自动买、关商店待命。\n\n去除额外等待，按系统截图极限运行。短点击可能漏点，会补买；只用足够新的画面派发。仅适配小米 14 的 2670×1200 横屏。\n");
         title.setTextSize(18);
         layout.addView(title);
         Button settings = new Button(this);

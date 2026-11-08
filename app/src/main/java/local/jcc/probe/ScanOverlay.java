@@ -61,6 +61,14 @@ final class ScanOverlay {
         refreshSwitch = makeSwitch("自动刷新");
         panel.addView(assistSwitch, new LinearLayout.LayoutParams(-1, dp(44)));
         panel.addView(refreshSwitch, new LinearLayout.LayoutParams(-1, dp(44)));
+        TextView close = text("关闭悬浮窗", 12, Color.rgb(237, 177, 171));
+        close.setGravity(Gravity.CENTER);
+        close.setBackground(background(Color.rgb(54, 40, 48), 8, Color.rgb(91, 59, 68)));
+        close.setContentDescription("停止自动操作并关闭悬浮窗");
+        close.setOnClickListener(v -> service.hideOverlay());
+        LinearLayout.LayoutParams closeParams = new LinearLayout.LayoutParams(-1, dp(36));
+        closeParams.topMargin = dp(6);
+        panel.addView(close, closeParams);
         assistSwitch.setOnCheckedChangeListener((button, checked) -> {
             if (syncing) return;
             if (checked) service.startScanning(); else service.stopScanning("已手动暂停");
