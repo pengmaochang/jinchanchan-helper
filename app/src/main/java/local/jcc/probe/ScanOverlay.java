@@ -42,7 +42,7 @@ final class ScanOverlay {
         panel.setPadding(dp(12), dp(8), dp(12), dp(10));
         panel.setBackground(background(Color.argb(246, 24, 33, 48), 16, Color.rgb(61, 77, 97)));
         LinearLayout heading = new LinearLayout(service); heading.setGravity(Gravity.CENTER_VERTICAL);
-        TextView title = text("金铲铲助手", 14, Color.WHITE);
+        TextView title = text(service.getString(R.string.app_name), 14, Color.WHITE);
         title.setTypeface(null, Typeface.BOLD);
         title.setOnTouchListener((v, event) -> drag(v, event, false));
         heading.addView(title, new LinearLayout.LayoutParams(0, dp(32), 1));

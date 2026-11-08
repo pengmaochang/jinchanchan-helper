@@ -2,14 +2,14 @@
     <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
     <instrumentation android:name=".OcrChecks" android:targetPackage="local.jcc.probe" android:label="Read-only OCR fixture check" />
     <instrumentation android:name=".DeckChecks" android:targetPackage="local.jcc.probe" android:label="Isolated named deck checks" />
-    <application android:label="金铲铲截图验证" android:icon="@drawable/jcc_icon" android:roundIcon="@drawable/jcc_icon" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:allowBackup="false" android:supportsRtl="true">
+    <application android:label="@string/app_name" android:icon="@drawable/jcc_icon" android:roundIcon="@drawable/jcc_icon" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:allowBackup="false" android:supportsRtl="true">
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <service android:name=".CaptureService" android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE" android:exported="true" android:label="金铲铲截图验证">
+        <service android:name=".CaptureService" android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE" android:exported="true" android:label="@string/app_name">
             <intent-filter><action android:name="android.accessibilityservice.AccessibilityService" /></intent-filter>
             <meta-data android:name="android.accessibilityservice" android:resource="@xml/capture_service" />
         </service>

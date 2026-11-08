@@ -1,3 +1,4 @@
 <resources>
+    <string name="app_name">金铲铲D牌助手</string>
     <string name="service_description">由你通过悬浮窗开始、暂停：离线识别商店卡名，按你填写的名字顺序购买；可选择自动刷新或手动刷新。读取窗口包名确认游戏前台，使用无障碍手势点击。关商店、离开游戏或识别不清时停止。画面不上传，手动截图才保存到相册。仅适配当前横屏布局。</string>
 </resources>
