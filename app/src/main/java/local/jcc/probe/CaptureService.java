@@ -23,6 +23,8 @@ public class CaptureService extends AccessibilityService {
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private boolean busy;
     private boolean scanning;
+    private boolean choosingDeck;
+    private String deckName = "默认卡组";
     private long generation;
     private String foreground = "";
     private ScanOverlay overlay;
@@ -75,7 +77,9 @@ public class CaptureService extends AccessibilityService {
         if (scanning) return;
         android.content.SharedPreferences prefs = getSharedPreferences("probe", MODE_PRIVATE);
         try {
-            targets = BuyPolicy.parseTargets(prefs.getString("targets", "可酷伯"));
+            DeckStore.Deck deck = new DeckStore(this).current();
+            deckName = deck.name;
+            targets = BuyPolicy.parseTargets(deck.targets);
             if (targets.isEmpty()) throw new IllegalArgumentException("请先填写目标名字");
             policy = new BuyPolicy(targets, prefs.getInt("reserve", 0), prefs.getBoolean("autoRefresh", false));
         } catch (IllegalArgumentException e) { status(e.getMessage()); return; }
@@ -86,6 +90,27 @@ public class CaptureService extends AccessibilityService {
         if (overlay != null) overlay.dockBelowShop();
         handler.postDelayed(scanNext, 100);
     }
+    String currentDeckName() { return new DeckStore(this).current().name; }
+    void selectDeck(String id) {
+        DeckStore.Deck deck = new DeckStore(this).select(id);
+        deckName = deck.name;
+        targets = BuyPolicy.parseTargets(deck.targets);
+        android.content.SharedPreferences prefs = getSharedPreferences("probe", MODE_PRIVATE);
+        generation++;
+        handler.removeCallbacks(scanNext);
+        policy = new BuyPolicy(targets, prefs.getInt("reserve", 0), prefs.getBoolean("autoRefresh", false));
+        status("当前卡组：" + deckName);
+        if (scanning && !choosingDeck) handler.postDelayed(scanNext, 100);
+    }
+    void beginDeckSelection() {
+        choosingDeck = true; generation++;
+        handler.removeCallbacks(scanNext);
+        if (policy != null) policy.shopClosed();
+    }
+    void endDeckSelection() {
+        choosingDeck = false;
+        if (scanning) { handler.removeCallbacks(scanNext); handler.postDelayed(scanNext, 100); }
+    }
     void toggleScanning() {
         if (scanning) stopScanning("已手动暂停"); else startScanning();
     }
@@ -93,7 +118,7 @@ public class CaptureService extends AccessibilityService {
         if (!scanning) return;
         status(message);
         handler.removeCallbacks(scanNext);
-        handler.postDelayed(scanNext, 400);
+        if (!choosingDeck) handler.postDelayed(scanNext, 400);
     }
     private void waitForGame(String message) {
         if (!scanning) return;
@@ -130,7 +155,7 @@ public class CaptureService extends AccessibilityService {
         status(reason);
     }
     private void scan() {
-        if (!scanning) return;
+        if (!scanning || choosingDeck) return;
         if (!isGameForeground()) { waitForGame("已开启 · 等待游戏和商店"); return; }
         if (overlay != null && overlay.overlapsShop()) {
             overlay.dockBelowShop();

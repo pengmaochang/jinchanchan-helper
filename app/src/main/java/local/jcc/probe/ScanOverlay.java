@@ -17,7 +17,7 @@ final class ScanOverlay {
     private final LinearLayout controls;
     private final Switch refreshToggle;
     private final Button startButton;
-    private boolean attached, compact;
+    private boolean attached;
     private boolean running;
     private float startX, startY;
     private int originX, originY;
@@ -41,10 +41,12 @@ final class ScanOverlay {
         status = new TextView(service);
         status.setTextColor(Color.rgb(180, 224, 255));
         status.setTextSize(11);
-        status.setText("已暂停 · 开始后按目标购买");
+        status.setText("卡组：" + service.currentDeckName() + " ▾");
         status.setMaxLines(1);
         status.setEllipsize(android.text.TextUtils.TruncateAt.END);
         root.addView(status);
+        status.setPadding(0, dp(service, 3), 0, dp(service, 3));
+        status.setOnClickListener(v -> chooseDeck(service));
         refreshToggle = new Switch(service);
         refreshToggle.setText("自动刷"); refreshToggle.setTextSize(11); refreshToggle.setTextColor(Color.WHITE);
         refreshToggle.setChecked(service.getSharedPreferences("probe", Context.MODE_PRIVATE).getBoolean("autoRefresh", false));
@@ -79,10 +81,7 @@ final class ScanOverlay {
             }
             if (event.getActionMasked() == MotionEvent.ACTION_UP) {
                 if (Math.abs(event.getRawX() - startX) + Math.abs(event.getRawY() - startY) < dp(service, 8)) {
-                    compact = !compact;
-                    status.setVisibility(compact ? View.GONE : View.VISIBLE);
-                    updateTitle();
-                    windows.updateViewLayout(root, params);
+                    chooseDeck(service);
                 }
                 return true;
             }
@@ -113,12 +112,28 @@ final class ScanOverlay {
     void remove() { if (attached) { windows.removeView(root); attached = false; } }
     void update(String message, boolean running) {
         this.running = running;
-        status.setText(message);
+        status.setText("卡组：" + ((CaptureService) root.getContext()).currentDeckName() + " ▾");
         startButton.setText(running ? "暂停" : "开启");
         updateTitle();
     }
     private void updateTitle() {
-        handle.setText((running ? "● 已开启" : "○ 已暂停") + (compact ? " · 展开" : " · 拖动/收起"));
+        handle.setText((running ? "● 已开启" : "○ 已暂停") + " · 拖动");
+    }
+    private void chooseDeck(CaptureService service) {
+        try {
+            java.util.List<DeckStore.Deck> decks = new DeckStore(service).all();
+            String active = new DeckStore(service).current().id;
+            PopupMenu menu = new PopupMenu(service, status);
+            for (int i = 0; i < decks.size(); i++) menu.getMenu().add(0, i, i, decks.get(i).name)
+                .setCheckable(true).setChecked(decks.get(i).id.equals(active));
+            menu.setOnMenuItemClickListener(item -> { service.selectDeck(decks.get(item.getItemId()).id); return true; });
+            menu.setOnDismissListener(m -> service.endDeckSelection());
+            service.beginDeckSelection();
+            menu.show();
+        } catch (RuntimeException e) {
+            service.endDeckSelection();
+            Toast.makeText(service, "无法打开卡组：" + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
     }
     void dockBelowShop() {
         if (!attached) return;
