@@ -1,12 +1,10 @@
 # OCR and build dependencies
 
-## Game icon
+## Golden spatula icon
 
-`app/src/main/res/drawable-nodpi/jcc_icon.png` is the 金铲铲之战 icon retrieved at the user's request from its Xiaomi App Store listing: https://app.mi.com/details?id=com.tencent.jkchess
+`app/src/main/res/drawable-nodpi/jcc_icon.png` is an ImageGen-cleaned version of the golden spatula equipment artwork supplied by the user. It replaces the previously downloaded game launcher icon, following the user's clarification. The edit removes the screenshot border and website overlay, keeps the diagonal golden spatula and dark gold background, and adds no text or characters.
 
-Asset URL: https://file.market.xiaomi.com/thumbnail/PNG/l512/AppStore/0a974be48eccc4b2abdf27b59b7bffa1e931600c0
-
-The game artwork belongs to Tencent and the respective rights holders. The app keeps its own helper name; the requested icon is used for the local launcher and translucent overlay.
+The underlying game artwork belongs to Tencent and the respective rights holders. This asset is used for the local helper launcher, main screen and translucent overlay.
 
 ## OCR
 
