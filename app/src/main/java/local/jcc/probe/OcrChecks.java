@@ -69,6 +69,28 @@ public class OcrChecks extends Instrumentation {
                     } finally { nameCrop.recycle(); }
                 } finally { image.recycle(); }
             }
+            File closedSample = new File(getTargetContext().getFilesDir(), "fixture5.png");
+            if (closedSample.isFile()) {
+                Bitmap image = BitmapFactory.decodeFile(closedSample.getAbsolutePath());
+                if (image == null) throw new AssertionError("收起样本读取失败");
+                try { if (ocr.analyze(image).shopOpen) throw new AssertionError("偏移搜索误判收起商店"); }
+                finally { image.recycle(); }
+            }
+            File shiftedSample = new File(getTargetContext().getFilesDir(), "fixture6.png");
+            if (shiftedSample.isFile()) {
+                Bitmap image = BitmapFactory.decodeFile(shiftedSample.getAbsolutePath());
+                if (image == null) throw new AssertionError("偏移样本读取失败");
+                try {
+                    BuyPolicy.Frame f = ocr.analyze(image);
+                    result.putString("shifted_sample", "offset=" + f.offsetX + " shop=" + f.shopOpen + " readable=" + f.readable + " " + f.summary() + " costs=" + java.util.Arrays.toString(f.costs));
+                    if (!f.shopOpen || !f.readable || f.gold != 97 || !"可酷伯".equals(f.names[0]) || Math.abs(f.offsetX+45)>3)
+                        throw new AssertionError("现场偏移商店识别失败");
+                    BuyPolicy.Decision action = new BuyPolicy(java.util.List.of("可酷伯"), 0, false).decide(f);
+                    if (action.kind != BuyPolicy.Kind.BUY || action.slot != 0) throw new AssertionError("偏移后未能规划购买");
+                    BuyPolicy.Frame again = ocr.analyze(image);
+                    if (!ocr.cachedLastFrame() || again.offsetX != f.offsetX) throw new AssertionError("偏移坐标缓存不一致");
+                } finally { image.recycle(); }
+            }
             Bitmap a = BitmapFactory.decodeFile(new File(getTargetContext().getExternalFilesDir(null), "fixture1.jpg").getAbsolutePath());
             Bitmap b = BitmapFactory.decodeFile(new File(getTargetContext().getExternalFilesDir(null), "fixture3.png").getAbsolutePath());
             if (a == null || b == null) throw new AssertionError("测速样本缺失");

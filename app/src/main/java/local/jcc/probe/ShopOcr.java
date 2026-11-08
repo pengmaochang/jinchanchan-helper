@@ -15,6 +15,12 @@ final class ShopOcr implements AutoCloseable {
     private final TextRecognizer recognizer = TextRecognition.getClient(new ChineseTextRecognizerOptions.Builder().build());
     private final PhoneVision.Template[] templates = new PhoneVision.Template[PhoneVision.NAMES.length];
     private final PhoneVision.Template refreshTemplate;
+    private final byte[] refreshMask;
+    private int offsetX;
+    private int[] name(int slot) { return PhoneLayout.shift(PhoneLayout.name(slot), offsetX); }
+    private int[] cost(int slot) { return PhoneLayout.shift(PhoneLayout.cost(slot), offsetX); }
+    private int[] gold() { return PhoneLayout.shift(PhoneLayout.GOLD, offsetX); }
+    private int[] refresh() { return PhoneLayout.shift(PhoneLayout.REFRESH, offsetX); }
     private final PhoneVision.Template[] feeTemplates = new PhoneVision.Template[3];
     private PhoneVision.Template observedRefresh;
     private byte[][] previousSignature;
@@ -34,7 +40,8 @@ final class ShopOcr implements AutoCloseable {
         } catch (org.json.JSONException e) { throw new IllegalStateException("棋子目录读取失败", e); }
 
         for (int i = 0; i < templates.length; i++) templates[i] = new PhoneVision.Template(asset(context, "templates/name" + i + ".bin"), PhoneLayout.NAME_W, PhoneLayout.NAME_H);
-        refreshTemplate = new PhoneVision.Template(asset(context, "templates/refresh.bin"), PhoneLayout.REFRESH[2], PhoneLayout.REFRESH[3]);
+        refreshMask = asset(context, "templates/refresh.bin");
+        refreshTemplate = new PhoneVision.Template(refreshMask, PhoneLayout.REFRESH[2], PhoneLayout.REFRESH[3]);
         for (int i = 0; i < 3; i++) feeTemplates[i] = new PhoneVision.Template(asset(context, "templates/fee" + (i + 1) + ".bin"), 35, 57);
     }
     private byte[] asset(Context context, String name) {
@@ -68,18 +75,18 @@ final class ShopOcr implements AutoCloseable {
         } catch (Exception e) { throw new IllegalStateException("OCR 处理失败：" + e.getMessage(), e); }
         finally { crop.recycle(); }
     }
-    Reading readCardName(Bitmap image, int slot) { return read(image, PhoneLayout.name(slot), false); }
+    Reading readCardName(Bitmap image, int slot) { return read(image, name(slot), false); }
     private Reading[] batch(Bitmap image) {
         final int rowHeight = 110;
         Bitmap crop = Bitmap.createBitmap(440, rowHeight * 7, Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(crop); canvas.drawColor(Color.rgb(25, 30, 35));
         Paint paint = new Paint();
         for (int i = 0; i < 7; i++) {
-            int[] rect = i < 5 ? PhoneLayout.name(i) : i == 5 ? PhoneLayout.GOLD : PhoneLayout.REFRESH;
+            int[] rect = i < 5 ? name(i) : i == 5 ? gold() : refresh();
             canvas.drawBitmap(image, new Rect(rect[0], rect[1], rect[0] + rect[2], rect[1] + rect[3]),
                 new Rect(16, i * rowHeight + 16, 16 + rect[2], i * rowHeight + 16 + rect[3]), paint);
             if (i < 5) {
-                rect = PhoneLayout.cost(i);
+                rect = cost(i);
                 canvas.drawBitmap(image, new Rect(rect[0], rect[1], rect[0] + rect[2], rect[1] + rect[3]),
                     new Rect(340, i * rowHeight + 16, 340 + rect[2], i * rowHeight + 16 + rect[3]), paint);
             }
@@ -123,14 +130,16 @@ final class ShopOcr implements AutoCloseable {
         if (!f.layoutValid) { f.problem = "仅适配小米 14 的 2670×1200 横屏截图"; return f; }
         int[] pixels = new int[image.getWidth() * image.getHeight()];
         image.getPixels(pixels, 0, image.getWidth(), 0, 0, image.getWidth(), image.getHeight());
+        offsetX = PhoneLayout.locateOffset(pixels, image.getWidth(), refreshMask);
+        f.offsetX = offsetX;
         byte[][] signature = new byte[12][];
         for (int i = 0; i < 5; i++) {
-            signature[i] = PhoneVision.mask(pixels, image.getWidth(), PhoneLayout.name(i));
-            signature[i + 5] = PhoneVision.mask(pixels, image.getWidth(), PhoneLayout.cost(i));
+            signature[i] = PhoneVision.mask(pixels, image.getWidth(), name(i));
+            signature[i + 5] = PhoneVision.mask(pixels, image.getWidth(), cost(i));
         }
-        signature[10] = PhoneVision.mask(pixels, image.getWidth(), PhoneLayout.GOLD);
-        signature[11] = PhoneVision.mask(pixels, image.getWidth(), PhoneLayout.REFRESH);
-        if (!recover && previousFrame != null && previousFrame.readable &&
+        signature[10] = PhoneVision.mask(pixels, image.getWidth(), gold());
+        signature[11] = PhoneVision.mask(pixels, image.getWidth(), refresh());
+        if (!recover && previousFrame != null && previousFrame.readable && previousFrame.offsetX == offsetX &&
             android.os.SystemClock.elapsedRealtime() - previousFrameAt < 1200 && java.util.Arrays.deepEquals(signature, previousSignature)) {
             cached = true; return previousFrame;
         }
@@ -138,20 +147,20 @@ final class ShopOcr implements AutoCloseable {
         f.shopOpen = PhoneVision.score(refreshSample, refreshTemplate) >= .88 ||
             (observedRefresh != null && PhoneVision.score(refreshSample, observedRefresh) >= .90);
         if (!f.shopOpen) {
-            f.shopOpen = read(image, PhoneLayout.REFRESH, false).text.contains("刷新");
+            f.shopOpen = read(image, refresh(), false).text.contains("刷新");
             if (f.shopOpen) observedRefresh = refreshSample;
         }
         if (!f.shopOpen) return f;
         Reading[] readings = batch(image);
         f.gold = number(readings[10]);
         if (f.gold < 0) {
-            int repaired = number(read(image, PhoneLayout.GOLD, true));
+            int repaired = number(read(image, gold(), true));
             if (repaired >= 0) f.gold = repaired;
         }
         f.readable = f.gold >= 0;
         if (!f.readable) f.problem = "金币区域读取失败";
         for (int i = 0; i < 5; i++) {
-            if (empty(pixels, image.getWidth(), PhoneLayout.name(i))) { f.names[i] = ""; continue; }
+            if (empty(pixels, image.getWidth(), name(i))) { f.names[i] = ""; continue; }
             String known = null;
             byte[] mask = signature[i];
             PhoneVision.Template sample = new PhoneVision.Template(mask, PhoneLayout.NAME_W, PhoneLayout.NAME_H);
@@ -161,7 +170,7 @@ final class ShopOcr implements AutoCloseable {
                 if (score >= best) { best = score; known = PhoneVision.NAMES[j]; }
             }
             Reading name = readings[i];
-            if (recover && known == null && name.text.isEmpty()) name = read(image, PhoneLayout.name(i), false);
+            if (recover && known == null && name.text.isEmpty()) name = read(image, name(i), false);
             f.names[i] = known != null ? known : name.text.isEmpty() ? null : name.text;
             if (known == null && name.text.isEmpty()) {
                 f.readable = false;
@@ -178,7 +187,7 @@ final class ShopOcr implements AutoCloseable {
             if (f.costs[i] < 1 || f.costs[i] > 5) {
                 Integer expected = catalogCosts.get(f.names[i]);
                 if (expected != null) f.costs[i] = expected;
-                else if (recover) f.costs[i] = number(read(image, PhoneLayout.cost(i), true));
+                else if (recover) f.costs[i] = number(read(image, cost(i), true));
             }
         }
         if (f.readable) { previousFrame = f; previousSignature = signature; previousFrameAt = android.os.SystemClock.elapsedRealtime(); }

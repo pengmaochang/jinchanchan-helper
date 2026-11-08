@@ -57,7 +57,7 @@ public class CaptureService extends AccessibilityService {
     @Override protected void onServiceConnected() {
         instance = this;
         if (trace == null) trace = new AssistTrace(this);
-        record("service connected version=" + "0.9.2");
+        record("service connected version=" + "0.9.3");
         handler.removeCallbacks(health); handler.postDelayed(health, 1000);
         status("服务已连接。可显示悬浮窗进行商店识别。");
     }
@@ -275,7 +275,7 @@ public class CaptureService extends AccessibilityService {
             if (now - lastFrameTrace >= 1000 || ocrMs >= 600) {
                 record("frame_ms=" + (now-started) + " ocr_ms=" + ocrMs + " cached=" + reusedFrame +
                     " action=" + action.kind + " reason=" + action.message + " readable=" + answer.readable +
-                    " shop=" + answer.shopOpen + " " + answer.summary() + " costs=" + java.util.Arrays.toString(answer.costs) + " problem=" + answer.problem);
+                    " shop=" + answer.shopOpen + " offset_x=" + answer.offsetX + " " + answer.summary() + " costs=" + java.util.Arrays.toString(answer.costs) + " problem=" + answer.problem);
                 lastFrameTrace = now;
             }
             if (action.kind == BuyPolicy.Kind.WAIT && answer.shopOpen) {
@@ -315,7 +315,7 @@ public class CaptureService extends AccessibilityService {
         TapTiming timing = new TapTiming(count, random);
         android.accessibilityservice.GestureDescription.Builder builder = new android.accessibilityservice.GestureDescription.Builder();
         for (int i = 0; i < count; i++) {
-            float x = (action.kind == BuyPolicy.Kind.BUY ? PhoneLayout.NAME_X[action.slots[i]] + 183 : 2497) + random.nextInt(-9, 10);
+            float x = (action.kind == BuyPolicy.Kind.BUY ? PhoneLayout.NAME_X[action.slots[i]] + 183 : 2497) + frame.offsetX + random.nextInt(-9, 10);
             float y = (action.kind == BuyPolicy.Kind.BUY ? 313 : 789) + random.nextInt(-12, 13);
             if (overlay != null && overlay.blocksPoint(x, y)) {
                 overlay.dockBelowShop(); retryFrame("正在移开悬浮窗"); return;

@@ -8,6 +8,7 @@ public final class BuyPolicy {
     public static final class Frame {
         public boolean layoutValid, shopOpen, readable;
         public int gold = -1;
+        public int offsetX;
         public final String[] names = new String[5];
         public final int[] costs = new int[5];
         public String problem = "";
