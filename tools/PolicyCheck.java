@@ -34,7 +34,7 @@ public class PolicyCheck {
         for (int i = 0; i < 12; i++) check(p.decide(f).kind == WAIT, "Uncertain frame waits without refreshing or disabling");
         p = new BuyPolicy(List.of("可酷伯"), 0, true);
         f = frame(20, "可酷伯"); d = p.decide(f); p.sent(d, f);
-        for (int i = 0; i < 7; i++) check(p.decide(f).kind == WAIT, "Failed tap is not immediately repeated");
+        check(p.decide(f).kind == WAIT, "Failed tap is not immediately repeated");
         check(p.decide(f).kind == BUY && p.bought == 0, "Unchanged gold permits delayed retry without a false purchase count");
         p = new BuyPolicy(List.of("可酷伯"), 0, true);
         f = frame(20); f.shopOpen = false;

@@ -13,14 +13,19 @@ import java.util.concurrent.TimeUnit;
 /** Bundled Chinese OCR; crops native phone pixels, without resizing or binarizing. */
 final class ShopOcr implements AutoCloseable {
     private final TextRecognizer recognizer = TextRecognition.getClient(new ChineseTextRecognizerOptions.Builder().build());
-    private final byte[][] templates = new byte[5][];
-    private final byte[] refreshTemplate;
-    private final byte[][] feeTemplates = new byte[3][];
+    private final PhoneVision.Template[] templates = new PhoneVision.Template[5];
+    private final PhoneVision.Template refreshTemplate;
+    private final PhoneVision.Template[] feeTemplates = new PhoneVision.Template[3];
+    private PhoneVision.Template observedRefresh;
+    private byte[][] previousSignature;
+    private BuyPolicy.Frame previousFrame;
+    private boolean cached;
+    boolean cachedLastFrame() { return cached; }
 
     ShopOcr(Context context) {
-        for (int i = 0; i < 5; i++) templates[i] = asset(context, "templates/name" + i + ".bin");
-        refreshTemplate = asset(context, "templates/refresh.bin");
-        for (int i = 0; i < 3; i++) feeTemplates[i] = asset(context, "templates/fee" + (i + 1) + ".bin");
+        for (int i = 0; i < 5; i++) templates[i] = new PhoneVision.Template(asset(context, "templates/name" + i + ".bin"), PhoneLayout.NAME_W, PhoneLayout.NAME_H);
+        refreshTemplate = new PhoneVision.Template(asset(context, "templates/refresh.bin"), PhoneLayout.REFRESH[2], PhoneLayout.REFRESH[3]);
+        for (int i = 0; i < 3; i++) feeTemplates[i] = new PhoneVision.Template(asset(context, "templates/fee" + (i + 1) + ".bin"), 35, 57);
     }
     private byte[] asset(Context context, String name) {
         try (java.io.InputStream in = context.getAssets().open(name)) {
@@ -92,35 +97,51 @@ final class ShopOcr implements AutoCloseable {
         } catch (Exception e) { throw new IllegalStateException("批量 OCR 失败", e); }
         finally { crop.recycle(); }
     }
-    private boolean empty(Bitmap image, int[] rect) {
+    private boolean empty(int[] pixels, int width, int[] rect) {
         int bright = 0;
         for (int y = rect[1]; y < rect[1] + rect[3]; y++) for (int x = rect[0]; x < rect[0] + rect[2]; x++) {
-            int c = image.getPixel(x, y);
+            int c = pixels[y * width + x];
             if (Color.red(c) > 185 && Color.green(c) > 180 && Color.blue(c) > 155) bright++;
         }
         return bright < 70;
     }
     BuyPolicy.Frame analyze(Bitmap image) {
+        cached = false;
         BuyPolicy.Frame f = new BuyPolicy.Frame();
         f.layoutValid = PhoneLayout.accepts(image.getWidth(), image.getHeight());
         if (!f.layoutValid) { f.problem = "仅适配小米 14 的 2670×1200 横屏截图"; return f; }
         int[] pixels = new int[image.getWidth() * image.getHeight()];
         image.getPixels(pixels, 0, image.getWidth(), 0, 0, image.getWidth(), image.getHeight());
-        f.shopOpen = PhoneVision.score(PhoneVision.mask(pixels, image.getWidth(), PhoneLayout.REFRESH), refreshTemplate,
-            PhoneLayout.REFRESH[2], PhoneLayout.REFRESH[3]) >= .88;
-        if (!f.shopOpen) f.shopOpen = read(image, PhoneLayout.REFRESH, false).text.contains("刷新");
+        byte[][] signature = new byte[12][];
+        for (int i = 0; i < 5; i++) {
+            signature[i] = PhoneVision.mask(pixels, image.getWidth(), PhoneLayout.name(i));
+            signature[i + 5] = PhoneVision.mask(pixels, image.getWidth(), PhoneLayout.cost(i));
+        }
+        signature[10] = PhoneVision.mask(pixels, image.getWidth(), PhoneLayout.GOLD);
+        signature[11] = PhoneVision.mask(pixels, image.getWidth(), PhoneLayout.REFRESH);
+        if (previousFrame != null && previousFrame.readable && java.util.Arrays.deepEquals(signature, previousSignature)) {
+            cached = true; return previousFrame;
+        }
+        PhoneVision.Template refreshSample = new PhoneVision.Template(signature[11], PhoneLayout.REFRESH[2], PhoneLayout.REFRESH[3]);
+        f.shopOpen = PhoneVision.score(refreshSample, refreshTemplate) >= .88 ||
+            (observedRefresh != null && PhoneVision.score(refreshSample, observedRefresh) >= .90);
+        if (!f.shopOpen) {
+            f.shopOpen = read(image, PhoneLayout.REFRESH, false).text.contains("刷新");
+            if (f.shopOpen) observedRefresh = refreshSample;
+        }
         if (!f.shopOpen) return f;
         Reading[] readings = batch(image);
         f.gold = number(readings[10]);
         f.readable = f.gold >= 0;
         if (!f.readable) f.problem = "金币区域读取失败";
         for (int i = 0; i < 5; i++) {
-            if (empty(image, PhoneLayout.name(i))) { f.names[i] = ""; continue; }
+            if (empty(pixels, image.getWidth(), PhoneLayout.name(i))) { f.names[i] = ""; continue; }
             String known = null;
-            byte[] mask = PhoneVision.mask(pixels, image.getWidth(), PhoneLayout.name(i));
+            byte[] mask = signature[i];
+            PhoneVision.Template sample = new PhoneVision.Template(mask, PhoneLayout.NAME_W, PhoneLayout.NAME_H);
             double best = .90;
             for (int j = 0; j < templates.length; j++) {
-                double score = PhoneVision.score(mask, templates[j], PhoneLayout.NAME_W, PhoneLayout.NAME_H);
+                double score = PhoneVision.score(sample, templates[j]);
                 if (score >= best) { best = score; known = PhoneVision.NAMES[j]; }
             }
             Reading name = readings[i];
@@ -130,13 +151,15 @@ final class ShopOcr implements AutoCloseable {
                 f.problem += (f.problem.isEmpty() ? "" : "；") + "第 " + (i + 1) + " 格暂未读到卡名";
             }
             f.costs[i] = number(readings[i + 5]);
-            byte[] feeMask = PhoneVision.mask(pixels, image.getWidth(), PhoneLayout.cost(i));
+            byte[] feeMask = signature[i + 5];
+            PhoneVision.Template feeSample = new PhoneVision.Template(feeMask, 35, 57);
             double feeBest = .88;
             for (int n = 0; n < feeTemplates.length; n++) {
-                double score = PhoneVision.score(feeMask, feeTemplates[n], 35, 57);
+                double score = PhoneVision.score(feeSample, feeTemplates[n]);
                 if (score >= feeBest) { feeBest = score; f.costs[i] = n + 1; }
             }
         }
+        if (f.readable) { previousFrame = f; previousSignature = signature; }
         return f;
     }
     private int number(Reading reading) {

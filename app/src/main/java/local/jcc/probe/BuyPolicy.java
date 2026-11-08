@@ -54,7 +54,7 @@ public final class BuyPolicy {
                 pending = null; misses = 0;
             } else if (pending.kind == Kind.BUY && !Arrays.equals(frame.names, previousNames)) {
                 pending = null; misses = 0;
-            } else if (++misses >= 8 && frame.gold == previousGold) {
+            } else if (++misses >= 2 && frame.gold == previousGold) {
                 // A tap that had no effect can be retried after several readable frames.
                 pending = null; misses = 0;
             } else return decision(Kind.WAIT, -1, "等待" + (pending.kind == Kind.BUY ? "购买" : "刷新") + "结果");

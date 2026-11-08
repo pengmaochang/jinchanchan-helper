@@ -43,6 +43,26 @@ public class OcrChecks extends Instrumentation {
                 if (i > 0 && !java.util.Arrays.equals(f.costs, expectedCosts[i])) failures.append(i).append("费用不匹配；");
             }
             if (failures.length() > 0) throw new AssertionError(failures.toString());
+            Bitmap a = BitmapFactory.decodeFile(new File(getTargetContext().getExternalFilesDir(null), "fixture1.jpg").getAbsolutePath());
+            Bitmap b = BitmapFactory.decodeFile(new File(getTargetContext().getExternalFilesDir(null), "fixture3.png").getAbsolutePath());
+            if (a == null || b == null) throw new AssertionError("测速样本缺失");
+            try {
+                long[] changed = new long[12], unchanged = new long[6];
+                for (int i = 0; i < changed.length; i++) {
+                    long t = android.os.SystemClock.elapsedRealtime();
+                    BuyPolicy.Frame f = ocr.analyze(i % 2 == 0 ? a : b);
+                    changed[i] = android.os.SystemClock.elapsedRealtime() - t;
+                    if (!f.readable || f.gold != (i % 2 == 0 ? 74 : 31)) throw new AssertionError("变化帧缓存失效检查失败");
+                }
+                for (int i = 0; i < unchanged.length; i++) {
+                    long t = android.os.SystemClock.elapsedRealtime(); ocr.analyze(b);
+                    unchanged[i] = android.os.SystemClock.elapsedRealtime() - t;
+                    if (!ocr.cachedLastFrame()) throw new AssertionError("未变化帧没有复用");
+                }
+                java.util.Arrays.sort(changed); java.util.Arrays.sort(unchanged);
+                result.putString("benchmark", "changed_median_ms=" + changed[changed.length / 2] +
+                    " changed_max_ms=" + changed[changed.length - 1] + " unchanged_median_ms=" + unchanged[unchanged.length / 2]);
+            } finally { a.recycle(); b.recycle(); }
             result.putString("result", "PASS"); finish(-1, result);
         } catch (Throwable e) { result.putString("error", e.toString()); finish(0, result); }
     }

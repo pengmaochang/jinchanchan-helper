@@ -2,7 +2,7 @@ package local.jcc.probe;
 
 import java.util.Random;
 
-/** Sequential taps, never simultaneous fingers; five taps finish within 198ms. */
+/** Experimental fast sequential taps; five taps finish within 72ms of scheduled input. */
 public final class TapTiming {
     public final int[] starts, durations;
     public final int totalMs;
@@ -10,8 +10,8 @@ public final class TapTiming {
         if (count < 1 || count > 5) throw new IllegalArgumentException();
         starts = new int[count]; durations = new int[count]; int end = 0;
         for (int i = 0; i < count; i++) {
-            starts[i] = end; durations[i] = 20 + random.nextInt(11); end += durations[i];
-            if (i + 1 < count) end += 7 + random.nextInt(6);
+            starts[i] = end; durations[i] = 8 + random.nextInt(5); end += durations[i];
+            if (i + 1 < count) end += 1 + random.nextInt(3);
         }
         totalMs = end;
     }

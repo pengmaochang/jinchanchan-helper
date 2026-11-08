@@ -1,6 +1,6 @@
 package local.jcc.probe;
 
-/** Localized white-text signatures used to reject a stale OCR frame before a gesture. */
+/** Native white-text masks; signature comparison remains available for reference diagnostics. */
 final class ScreenGuard {
     static byte[][] capture(int[] pixels, int width, int height) {
         if (!PhoneLayout.accepts(width, height) || pixels.length != width * height)

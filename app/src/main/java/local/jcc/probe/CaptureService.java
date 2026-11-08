@@ -32,6 +32,10 @@ public class CaptureService extends AccessibilityService {
     private BuyPolicy policy;
     private boolean previewOnly;
     private long lastScreenshot;
+    private int screenshotIntervalMs = 334;
+    private static final int MAX_ACTION_FRAME_AGE_MS = 250;
+    private long lastRefreshCompleted;
+    private String lastStatus = "";
     private java.util.List<String> targets;
     private final Runnable scanNext = this::scan;
     private final Runnable capture = this::captureNow;
@@ -85,10 +89,11 @@ public class CaptureService extends AccessibilityService {
         } catch (IllegalArgumentException e) { status(e.getMessage()); return; }
         previewOnly = prefs.getBoolean("previewOnly", false);
         scanning = true;
+        lastRefreshCompleted = 0;
         generation++;
         status("正在加载中文 OCR · 目标：" + targets);
         if (overlay != null) overlay.dockBelowShop();
-        handler.postDelayed(scanNext, 100);
+        handler.post(scanNext);
     }
     String currentDeckName() { return new DeckStore(this).current().name; }
     void selectDeck(String id) {
@@ -100,16 +105,17 @@ public class CaptureService extends AccessibilityService {
         handler.removeCallbacks(scanNext);
         policy = new BuyPolicy(targets, prefs.getInt("reserve", 0), prefs.getBoolean("autoRefresh", false));
         status("当前卡组：" + deckName);
-        if (scanning && !choosingDeck) handler.postDelayed(scanNext, 100);
+        if (scanning && !choosingDeck) handler.post(scanNext);
     }
     void beginDeckSelection() {
         choosingDeck = true; generation++;
+        lastRefreshCompleted = 0;
         handler.removeCallbacks(scanNext);
         if (policy != null) policy.shopClosed();
     }
     void endDeckSelection() {
         choosingDeck = false;
-        if (scanning) { handler.removeCallbacks(scanNext); handler.postDelayed(scanNext, 100); }
+        if (scanning) { handler.removeCallbacks(scanNext); handler.post(scanNext); }
     }
     void toggleScanning() {
         if (scanning) stopScanning("已手动暂停"); else startScanning();
@@ -118,7 +124,7 @@ public class CaptureService extends AccessibilityService {
         if (!scanning) return;
         status(message);
         handler.removeCallbacks(scanNext);
-        if (!choosingDeck) handler.postDelayed(scanNext, 400);
+        if (!choosingDeck) handler.postDelayed(scanNext, screenshotIntervalMs);
     }
     private void waitForGame(String message) {
         if (!scanning) return;
@@ -160,10 +166,10 @@ public class CaptureService extends AccessibilityService {
         if (overlay != null && overlay.overlapsShop()) {
             overlay.dockBelowShop();
             status("正在把悬浮窗移到商店下方……");
-            handler.postDelayed(scanNext, 100); return;
+            handler.postDelayed(scanNext, 16); return;
         }
-        if (busy) { handler.postDelayed(scanNext, 100); return; }
-        long remaining = 360 - (SystemClock.elapsedRealtime() - lastScreenshot);
+        if (busy) { handler.postDelayed(scanNext, 8); return; }
+        long remaining = screenshotIntervalMs - (SystemClock.elapsedRealtime() - lastScreenshot);
         if (remaining > 0) { handler.postDelayed(scanNext, remaining); return; }
         busy = true;
         lastScreenshot = SystemClock.elapsedRealtime();
@@ -189,6 +195,7 @@ public class CaptureService extends AccessibilityService {
                 @Override public void onFailure(int code) {
                     busy = false;
                     if (token == generation) {
+                        if (code == 3) screenshotIntervalMs = Math.min(360, screenshotIntervalMs + 4);
                         if (code == 2) stopScanning("无障碍截图权限失效，请重新开启服务");
                         else retryFrame("等待下一帧，截图错误码 " + code);
                     }
@@ -198,18 +205,18 @@ public class CaptureService extends AccessibilityService {
     }
     private void analyze(Bitmap image, long token, long started) {
         BuyPolicy.Frame result = null;
-        byte[][] guard = null;
+        long ocrStarted = SystemClock.elapsedRealtime();
+        boolean reused = false;
         String error = null;
         try {
             if (recognizer == null) recognizer = new ShopOcr(this);
             result = recognizer.analyze(image);
-            int w = image.getWidth(), h = image.getHeight();
-            int[] pixels = new int[w * h]; image.getPixels(pixels, 0, w, 0, 0, w, h);
-            if (result.layoutValid && result.shopOpen) guard = ScreenGuard.capture(pixels, w, h);
+            reused = recognizer.cachedLastFrame();
         } catch (Throwable e) { error = e.toString(); }
         finally { image.recycle(); }
         final BuyPolicy.Frame answer = result;
-        final byte[][] signature = guard;
+        final long ocrMs = SystemClock.elapsedRealtime() - ocrStarted;
+        final boolean reusedFrame = reused;
         final String failure = error;
         handler.post(() -> {
             busy = false;
@@ -219,56 +226,33 @@ public class CaptureService extends AccessibilityService {
             if (previewOnly) {
                 status("仅识别 · " + answer.summary() + "\n商店=" + answer.shopOpen + " 可读=" + answer.readable +
                     " · " + (SystemClock.elapsedRealtime() - started) + "ms\n" + answer.problem);
-                handler.postDelayed(scanNext, 100); return;
+                handler.post(scanNext); return;
             }
             BuyPolicy.Decision action = policy.decide(answer);
             String stats = "\n已买 " + policy.bought + " · 已刷新 " + policy.refreshed;
             if (action.kind == BuyPolicy.Kind.STOP) { stopScanning(action.message + stats); return; }
             status(action.message + "\n" + answer.summary() + stats);
-            if (action.kind == BuyPolicy.Kind.WAIT) { handler.postDelayed(scanNext, 100); return; }
-            long delay = Math.max(40, 360 - (SystemClock.elapsedRealtime() - lastScreenshot));
-            handler.postDelayed(() -> preflight(token, action, answer, signature), delay);
+            if (action.kind == BuyPolicy.Kind.WAIT) { handler.post(scanNext); return; }
+            long age = SystemClock.elapsedRealtime() - started;
+            android.util.Log.i("JccPerf", "frame_ms=" + age + " ocr_ms=" + ocrMs + " cached=" + reusedFrame + " interval_ms=" + screenshotIntervalMs);
+            if (age > MAX_ACTION_FRAME_AGE_MS) {
+                status("识别预热或耗时较长，等待新帧"); handler.post(scanNext); return;
+            }
+            tap(token, action, answer, PhoneLayout.WIDTH, PhoneLayout.HEIGHT, started);
         });
     }
-    private void preflight(long token, BuyPolicy.Decision action, BuyPolicy.Frame frame, byte[][] before) {
-        if (!scanning || token != generation) return;
-        if (!isGameForeground()) { waitForGame("已开启 · 等待返回游戏"); return; }
-        if (busy) { retryFrame("等待截图任务完成"); return; }
-        busy = true; lastScreenshot = SystemClock.elapsedRealtime();
-        try {
-            takeScreenshot(Display.DEFAULT_DISPLAY, getMainExecutor(), new TakeScreenshotCallback() {
-                @Override public void onSuccess(ScreenshotResult result) {
-                    Bitmap hardware = null, image = null;
-                    try (HardwareBuffer buffer = result.getHardwareBuffer()) {
-                        hardware = Bitmap.wrapHardwareBuffer(buffer, result.getColorSpace());
-                        if (hardware == null) throw new IOException("截图为空");
-                        image = hardware.copy(Bitmap.Config.ARGB_8888, false);
-                        if (image == null) throw new IOException("截图复制失败");
-                        int width = image.getWidth(), height = image.getHeight();
-                        int[] p = new int[width * height]; image.getPixels(p, 0, width, 0, 0, width, height);
-                        byte[][] after = ScreenGuard.capture(p, width, height);
-                        busy = false;
-                        if (!scanning || token != generation) return;
-                        if (!ScreenGuard.same(before, after) || (overlay != null && overlay.overlapsShop())) {
-                            status("画面已变化，重新识别；未点击"); handler.postDelayed(scanNext, 100); return;
-                        }
-                        handler.postDelayed(() -> tap(token, action, frame, width, height), 40 + java.util.concurrent.ThreadLocalRandom.current().nextInt(61));
-                    } catch (Throwable e) { busy = false; if (token == generation) retryFrame("画面变化，继续识别"); }
-                    finally { if (image != null) image.recycle(); if (hardware != null) hardware.recycle(); }
-                }
-                @Override public void onFailure(int error) { busy = false; if (token == generation) retryFrame("等待点击前截图恢复"); }
-            });
-        } catch (Exception e) { busy = false; retryFrame("等待点击前截图恢复"); }
-    }
-    private void tap(long token, BuyPolicy.Decision action, BuyPolicy.Frame frame, int width, int height) {
+    private void tap(long token, BuyPolicy.Decision action, BuyPolicy.Frame frame, int width, int height, long frameStarted) {
         if (!scanning || token != generation) return;
         if (!PhoneLayout.accepts(width, height)) { waitForGame("已开启 · 等待游戏横屏"); return; }
         if (action.kind == BuyPolicy.Kind.REFRESH && !policy.isAutoRefresh()) {
-            status("自动刷新已关闭，取消待执行刷新"); handler.postDelayed(scanNext, 100); return;
+            status("自动刷新已关闭，取消待执行刷新"); handler.post(scanNext); return;
         }
         if (!isGameForeground()) { waitForGame("已开启 · 等待返回游戏"); return; }
+        if (SystemClock.elapsedRealtime() - frameStarted > MAX_ACTION_FRAME_AGE_MS) {
+            status("等待更新的游戏画面"); handler.post(scanNext); return;
+        }
         if (overlay != null && overlay.overlapsShop()) {
-            overlay.dockBelowShop(); handler.postDelayed(scanNext, 100); return;
+            overlay.dockBelowShop(); handler.post(scanNext); return;
         }
         java.util.concurrent.ThreadLocalRandom random = java.util.concurrent.ThreadLocalRandom.current();
         int count = action.kind == BuyPolicy.Kind.BUY ? action.slots.length : 1;
@@ -284,13 +268,20 @@ public class CaptureService extends AccessibilityService {
             builder.addStroke(new android.accessibilityservice.GestureDescription.StrokeDescription(path, timing.starts[i], timing.durations[i]));
         }
         android.accessibilityservice.GestureDescription gesture = builder.build();
+        final long dispatchStarted = SystemClock.elapsedRealtime();
         try {
             boolean accepted = dispatchGesture(gesture, new GestureResultCallback() {
                 @Override public void onCompleted(android.accessibilityservice.GestureDescription g) {
                     if (!scanning || token != generation) return;
                     policy.sent(action, frame);
                     android.util.Log.i("JccAssist", "Gesture completed: " + action.message + " · scheduled=" + timing.totalMs + "ms");
-                    handler.postDelayed(scanNext, 60);
+                    long completed = SystemClock.elapsedRealtime();
+                    android.util.Log.i("JccPerf", "action=" + action.kind + " count=" + count + " scheduled_ms=" + timing.totalMs + " actual_ms=" + (completed - dispatchStarted));
+                    if (action.kind == BuyPolicy.Kind.REFRESH) {
+                        if (lastRefreshCompleted != 0) android.util.Log.i("JccPerf", "refresh_gap_ms=" + (completed - lastRefreshCompleted));
+                        lastRefreshCompleted = completed;
+                    }
+                    handler.post(scanNext);
                 }
                 @Override public void onCancelled(android.accessibilityservice.GestureDescription g) {
                     if (token == generation) retryFrame("上次点击被取消，继续识别");
@@ -307,6 +298,8 @@ public class CaptureService extends AccessibilityService {
         handler.postDelayed(capture, 8000);
     }
     private void status(String value) {
+        if (value.equals(lastStatus)) return;
+        lastStatus = value;
         getSharedPreferences("probe", MODE_PRIVATE).edit().putString("status", value).apply();
         if (overlay != null) overlay.update(value, scanning);
         android.util.Log.i("JccAssist", value);
