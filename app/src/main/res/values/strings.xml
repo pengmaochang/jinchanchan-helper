@@ -1,0 +1,3 @@
+<resources>
+    <string name="service_description">仅在你点击截图按钮后截取一张屏幕，用于验证游戏画面是否可读。截图保存到本机相册，不上传、不自动点击。测试后可关闭此服务。</string>
+</resources>
