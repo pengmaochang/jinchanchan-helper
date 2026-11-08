@@ -73,6 +73,28 @@ public class OcrChecks extends Instrumentation {
             Bitmap b = BitmapFactory.decodeFile(new File(getTargetContext().getExternalFilesDir(null), "fixture3.png").getAbsolutePath());
             if (a == null || b == null) throw new AssertionError("测速样本缺失");
             try {
+                Bitmap damaged = a.copy(Bitmap.Config.ARGB_8888, true);
+                try {
+                    Canvas canvas = new Canvas(damaged); Paint paint = new Paint(); paint.setColor(Color.BLACK);
+                    int[] fee = PhoneLayout.cost(0);
+                    canvas.drawRect(fee[0], fee[1], fee[0]+fee[2], fee[1]+fee[3], paint);
+                    BuyPolicy.Frame f = ocr.analyze(damaged);
+                    if (f.costs[0] != 1) throw new AssertionError("已知目标费用缺失时未使用离线目录恢复");
+                    int[] name = PhoneLayout.name(4);
+                    canvas.drawRect(name[0], name[1], name[0]+name[2], name[1]+name[3], paint);
+                    paint.setColor(Color.WHITE); canvas.drawRect(name[0]+10, name[1]+10, name[0]+160, name[1]+42, paint);
+                    f = ocr.analyze(damaged);
+                    if (f.readable || f.names[4] != null) throw new AssertionError("未读到的非空卡名不得误认为已购买空位");
+                    if (new BuyPolicy(java.util.List.of("可酷伯"), 0, true).decide(f).kind != BuyPolicy.Kind.BUY)
+                        throw new AssertionError("无关卡名未读到时阻塞了已知目标");
+                    if (new BuyPolicy(java.util.List.of("黛安娜"), 0, true).decide(f).kind != BuyPolicy.Kind.WAIT)
+                        throw new AssertionError("存在未读卡位时不应自动刷新");
+                } finally { damaged.recycle(); }
+                ocr.analyze(b); ocr.requestRecovery();
+                BuyPolicy.Frame recovered = ocr.analyze(b);
+                if (ocr.cachedLastFrame() || recovered.gold != 31) throw new AssertionError("恢复请求未绕过缓存并重读金币");
+                ocr.analyze(b);
+                if (!ocr.cachedLastFrame()) throw new AssertionError("恢复后未保留快速缓存");
                 long[] changed = new long[12], unchanged = new long[6];
                 for (int i = 0; i < changed.length; i++) {
                     long t = android.os.SystemClock.elapsedRealtime();

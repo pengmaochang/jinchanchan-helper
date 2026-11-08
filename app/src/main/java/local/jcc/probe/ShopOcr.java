@@ -20,9 +20,19 @@ final class ShopOcr implements AutoCloseable {
     private byte[][] previousSignature;
     private BuyPolicy.Frame previousFrame;
     private boolean cached;
+    private volatile boolean recoveryRequested;
+    private long previousFrameAt;
+    private final java.util.Map<String, Integer> catalogCosts = new java.util.HashMap<>();
+    void requestRecovery() { recoveryRequested = true; }
+
     boolean cachedLastFrame() { return cached; }
 
     ShopOcr(Context context) {
+        try {
+            org.json.JSONArray rows = new org.json.JSONObject(new String(asset(context, "champions_s18.json"), java.nio.charset.StandardCharsets.UTF_8)).getJSONArray("champions");
+            for (int i = 0; i < rows.length(); i++) { org.json.JSONObject c = rows.getJSONObject(i); catalogCosts.put(c.getString("name"), c.getInt("price")); }
+        } catch (org.json.JSONException e) { throw new IllegalStateException("棋子目录读取失败", e); }
+
         for (int i = 0; i < templates.length; i++) templates[i] = new PhoneVision.Template(asset(context, "templates/name" + i + ".bin"), PhoneLayout.NAME_W, PhoneLayout.NAME_H);
         refreshTemplate = new PhoneVision.Template(asset(context, "templates/refresh.bin"), PhoneLayout.REFRESH[2], PhoneLayout.REFRESH[3]);
         for (int i = 0; i < 3; i++) feeTemplates[i] = new PhoneVision.Template(asset(context, "templates/fee" + (i + 1) + ".bin"), 35, 57);
@@ -107,6 +117,7 @@ final class ShopOcr implements AutoCloseable {
     }
     BuyPolicy.Frame analyze(Bitmap image) {
         cached = false;
+        boolean recover = recoveryRequested; recoveryRequested = false;
         BuyPolicy.Frame f = new BuyPolicy.Frame();
         f.layoutValid = PhoneLayout.accepts(image.getWidth(), image.getHeight());
         if (!f.layoutValid) { f.problem = "仅适配小米 14 的 2670×1200 横屏截图"; return f; }
@@ -119,7 +130,8 @@ final class ShopOcr implements AutoCloseable {
         }
         signature[10] = PhoneVision.mask(pixels, image.getWidth(), PhoneLayout.GOLD);
         signature[11] = PhoneVision.mask(pixels, image.getWidth(), PhoneLayout.REFRESH);
-        if (previousFrame != null && previousFrame.readable && java.util.Arrays.deepEquals(signature, previousSignature)) {
+        if (!recover && previousFrame != null && previousFrame.readable &&
+            android.os.SystemClock.elapsedRealtime() - previousFrameAt < 1200 && java.util.Arrays.deepEquals(signature, previousSignature)) {
             cached = true; return previousFrame;
         }
         PhoneVision.Template refreshSample = new PhoneVision.Template(signature[11], PhoneLayout.REFRESH[2], PhoneLayout.REFRESH[3]);
@@ -132,6 +144,10 @@ final class ShopOcr implements AutoCloseable {
         if (!f.shopOpen) return f;
         Reading[] readings = batch(image);
         f.gold = number(readings[10]);
+        if (f.gold < 0) {
+            int repaired = number(read(image, PhoneLayout.GOLD, true));
+            if (repaired >= 0) f.gold = repaired;
+        }
         f.readable = f.gold >= 0;
         if (!f.readable) f.problem = "金币区域读取失败";
         for (int i = 0; i < 5; i++) {
@@ -145,7 +161,8 @@ final class ShopOcr implements AutoCloseable {
                 if (score >= best) { best = score; known = PhoneVision.NAMES[j]; }
             }
             Reading name = readings[i];
-            f.names[i] = known != null ? known : name.text;
+            if (recover && known == null && name.text.isEmpty()) name = read(image, PhoneLayout.name(i), false);
+            f.names[i] = known != null ? known : name.text.isEmpty() ? null : name.text;
             if (known == null && name.text.isEmpty()) {
                 f.readable = false;
                 f.problem += (f.problem.isEmpty() ? "" : "；") + "第 " + (i + 1) + " 格暂未读到卡名";
@@ -158,8 +175,13 @@ final class ShopOcr implements AutoCloseable {
                 double score = PhoneVision.score(feeSample, feeTemplates[n]);
                 if (score >= feeBest) { feeBest = score; f.costs[i] = n + 1; }
             }
+            if (f.costs[i] < 1 || f.costs[i] > 5) {
+                Integer expected = catalogCosts.get(f.names[i]);
+                if (expected != null) f.costs[i] = expected;
+                else if (recover) f.costs[i] = number(read(image, PhoneLayout.cost(i), true));
+            }
         }
-        if (f.readable) { previousFrame = f; previousSignature = signature; }
+        if (f.readable) { previousFrame = f; previousSignature = signature; previousFrameAt = android.os.SystemClock.elapsedRealtime(); }
         return f;
     }
     private int number(Reading reading) {

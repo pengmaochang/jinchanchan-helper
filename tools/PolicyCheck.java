@@ -65,6 +65,29 @@ public class PolicyCheck {
         boolean invalidReserve = false;
         try { p.setReserve(-1); } catch (IllegalArgumentException expected) { invalidReserve = true; }
         check(invalidReserve, "Reject negative reserve");
+        p = new BuyPolicy(List.of("可酷伯"), 0, true);
+        f = frame(20, "可酷伯"); f.readable = false; f.names[4] = null;
+        check(p.decide(f).kind == BUY, "An unreadable unrelated slot does not block a known target");
+        f.names[0] = "洛";
+        check(p.decide(f).kind == WAIT, "Never refresh over an unreadable slot");
+        f.gold = -1; f.names[0] = "可酷伯";
+        check(p.decide(f).kind == WAIT, "Missing gold still prevents all spending");
+        p = new BuyPolicy(List.of("可酷伯"), 0, true);
+        f = frame(20, "可酷伯"); p.sent(p.decide(f), f);
+        f = frame(21, "可酷伯");
+        check(p.decide(f).kind == WAIT, "Income does not immediately replay a pending tap");
+        check(p.decide(f).kind == WAIT, "Pending income frame gets a bounded wait");
+        check(p.decide(f).kind == BUY && p.bought == 0, "Income cannot deadlock a pending purchase or falsely count it");
+        p = new BuyPolicy(List.of("可酷伯"), 0, true);
+        f = frame(20, "洛"); p.sent(p.decide(f), f);
+        f = frame(19, "洛");
+        check(p.decide(f).kind == WAIT, "A refresh with income needs fresh confirmation");
+        check(p.decide(f).kind == WAIT, "Wait before replanning an uncertain refresh");
+        check(p.decide(f).kind == REFRESH && p.refreshed == 0, "Gold mismatch cannot deadlock refresh or falsely count it");
+        p = new BuyPolicy(List.of("可酷伯"), 0, true);
+        f = frame(20, "洛"); p.sent(p.decide(f), f);
+        for (int i = 0; i < 5; i++) check(p.decide(frame(18)).kind == WAIT, "Allow refresh animation to settle");
+        check(p.decide(frame(18)).kind == REFRESH, "A persistently empty shop cannot deadlock refresh forever");
         System.out.println("Policy checks passed.");
     }
 }

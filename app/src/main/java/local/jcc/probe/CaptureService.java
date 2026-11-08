@@ -22,6 +22,21 @@ public class CaptureService extends AccessibilityService {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private boolean busy;
+    private AssistTrace trace;
+    private long captureRequest, lastFrameTrace, waitSince, lastRecovery;
+    private String waitMessage = "";
+    private volatile String phase = "idle";
+    private volatile long phaseSince;
+    private final Runnable health = new Runnable() {
+        @Override public void run() {
+            if (scanning) record("health phase=" + phase + " phase_ms=" + (SystemClock.elapsedRealtime() - phaseSince) +
+                " busy=" + busy + " panel=" + choosingDeck + " status=" + lastStatus);
+            handler.postDelayed(this, 1000);
+        }
+    };
+    private void record(String value) { if (trace != null) trace.record(value); }
+    private void phase(String value) { phase = value; phaseSince = SystemClock.elapsedRealtime(); }
+
     private boolean scanning;
     private boolean choosingDeck;
     private String deckName = "默认卡组";
@@ -41,6 +56,9 @@ public class CaptureService extends AccessibilityService {
     private final Runnable capture = this::captureNow;
     @Override protected void onServiceConnected() {
         instance = this;
+        if (trace == null) trace = new AssistTrace(this);
+        record("service connected version=" + "0.9.2");
+        handler.removeCallbacks(health); handler.postDelayed(health, 1000);
         status("服务已连接。可显示悬浮窗进行商店识别。");
     }
     @Override public void onAccessibilityEvent(AccessibilityEvent event) {
@@ -183,9 +201,21 @@ public class CaptureService extends AccessibilityService {
         busy = true;
         lastScreenshot = SystemClock.elapsedRealtime();
         final long token = generation, started = SystemClock.elapsedRealtime();
+        final long request = ++captureRequest;
+        phase("screenshot");
+        final Runnable screenshotTimeout = () -> {
+            if (request != captureRequest || !busy || !"screenshot".equals(phase)) return;
+            captureRequest++; busy = false;
+            record("screenshot callback timeout");
+            if (scanning) { generation++; retryFrame("截图回调超时，重新取帧"); }
+        };
+        handler.postDelayed(screenshotTimeout, 1500);
         try {
             takeScreenshot(Display.DEFAULT_DISPLAY, getMainExecutor(), new TakeScreenshotCallback() {
                 @Override public void onSuccess(ScreenshotResult result) {
+                    handler.removeCallbacks(screenshotTimeout);
+                    if (request != captureRequest) { result.getHardwareBuffer().close(); return; }
+                    phase("copy");
                     Bitmap image = null, hardware = null;
                     try (HardwareBuffer buffer = result.getHardwareBuffer()) {
                         hardware = Bitmap.wrapHardwareBuffer(buffer, result.getColorSpace());
@@ -202,7 +232,9 @@ public class CaptureService extends AccessibilityService {
                     } finally { if (hardware != null) hardware.recycle(); }
                 }
                 @Override public void onFailure(int code) {
-                    busy = false;
+                    handler.removeCallbacks(screenshotTimeout);
+                    if (request != captureRequest) return;
+                    phase("idle"); busy = false;
                     if (token == generation) {
                         if (code == 3) screenshotIntervalMs = Math.min(360, screenshotIntervalMs + 4);
                         if (code == 2) stopScanning("无障碍截图权限失效，请重新开启服务");
@@ -210,10 +242,11 @@ public class CaptureService extends AccessibilityService {
                     }
                 }
             });
-        } catch (Exception e) { busy = false; retryFrame("等待截图恢复：" + e.getMessage()); }
+        } catch (Exception e) { handler.removeCallbacks(screenshotTimeout); phase("idle"); busy = false; retryFrame("等待截图恢复：" + e.getMessage()); }
     }
     private void analyze(Bitmap image, long token, long started) {
         BuyPolicy.Frame result = null;
+        phase("OCR");
         long ocrStarted = SystemClock.elapsedRealtime();
         boolean reused = false;
         String error = null;
@@ -228,9 +261,9 @@ public class CaptureService extends AccessibilityService {
         final boolean reusedFrame = reused;
         final String failure = error;
         handler.post(() -> {
-            busy = false;
+            phase("idle"); busy = false;
             if (!scanning || token != generation) return;
-            if (answer == null) { retryFrame("本帧识别暂未成功，继续等待：" + failure); return; }
+            if (answer == null) { record("OCR failure ms=" + ocrMs + " error=" + failure); retryFrame("本帧识别暂未成功，继续等待：" + failure); return; }
             if (!answer.layoutValid) { waitForGame("已开启 · 等待 2670×1200 游戏横屏"); return; }
             if (previewOnly) {
                 status("仅识别 · " + answer.summary() + "\n商店=" + answer.shopOpen + " 可读=" + answer.readable +
@@ -238,6 +271,20 @@ public class CaptureService extends AccessibilityService {
                 handler.post(scanNext); return;
             }
             BuyPolicy.Decision action = policy.decide(answer);
+            long now = SystemClock.elapsedRealtime();
+            if (now - lastFrameTrace >= 1000 || ocrMs >= 600) {
+                record("frame_ms=" + (now-started) + " ocr_ms=" + ocrMs + " cached=" + reusedFrame +
+                    " action=" + action.kind + " reason=" + action.message + " readable=" + answer.readable +
+                    " shop=" + answer.shopOpen + " " + answer.summary() + " costs=" + java.util.Arrays.toString(answer.costs) + " problem=" + answer.problem);
+                lastFrameTrace = now;
+            }
+            if (action.kind == BuyPolicy.Kind.WAIT && answer.shopOpen) {
+                if (!waitMessage.equals(action.message)) { waitMessage = action.message; waitSince = now; }
+                if (now - waitSince >= 1200 && now - lastRecovery >= 1200 && recognizer != null) {
+                    recognizer.requestRecovery(); lastRecovery = now;
+                    record("request OCR recovery reason=" + action.message);
+                }
+            } else { waitMessage = ""; waitSince = now; }
             String stats = "\n已买 " + policy.bought + " · 已刷新 " + policy.refreshed;
             if (action.kind == BuyPolicy.Kind.STOP) { stopScanning(action.message + stats); return; }
             status(action.message + "\n" + answer.summary() + stats);
@@ -278,10 +325,23 @@ public class CaptureService extends AccessibilityService {
         }
         android.accessibilityservice.GestureDescription gesture = builder.build();
         final long dispatchStarted = SystemClock.elapsedRealtime();
+        phase("gesture");
+        final boolean[] finished = {false};
+        final Runnable gestureTimeout = () -> {
+            if (finished[0] || !scanning || token != generation) return;
+            finished[0] = true; generation++; phase("idle");
+            record("gesture callback timeout action=" + action.kind);
+            retryFrame("点击回调超时，重新读取商店");
+        };
+        handler.postDelayed(gestureTimeout, 1200);
         try {
             boolean accepted = dispatchGesture(gesture, new GestureResultCallback() {
                 @Override public void onCompleted(android.accessibilityservice.GestureDescription g) {
+                    handler.removeCallbacks(gestureTimeout);
+                    if (finished[0]) return;
+                    finished[0] = true;
                     if (!scanning || token != generation) return;
+                    phase("idle");
                     policy.sent(action, frame);
                     android.util.Log.i("JccAssist", "Gesture completed: " + action.message + " · scheduled=" + timing.totalMs + "ms");
                     long completed = SystemClock.elapsedRealtime();
@@ -293,11 +353,14 @@ public class CaptureService extends AccessibilityService {
                     handler.post(scanNext);
                 }
                 @Override public void onCancelled(android.accessibilityservice.GestureDescription g) {
-                    if (token == generation) retryFrame("上次点击被取消，继续识别");
+                    handler.removeCallbacks(gestureTimeout);
+                    if (finished[0]) return;
+                    finished[0] = true;
+                    if (token == generation) { phase("idle"); retryFrame("上次点击被取消，继续识别"); }
                 }
             }, handler);
-            if (!accepted) stopScanning("系统拒绝手势，请确认无障碍服务已重新启用");
-        } catch (RuntimeException e) { stopScanning("点击失败：" + e.getMessage()); }
+            if (!accepted) { handler.removeCallbacks(gestureTimeout); finished[0] = true; phase("idle"); stopScanning("系统拒绝手势，请确认无障碍服务已重新启用"); }
+        } catch (RuntimeException e) { handler.removeCallbacks(gestureTimeout); finished[0] = true; phase("idle"); stopScanning("点击失败：" + e.getMessage()); }
     }
     void scheduleCapture() {
         stopScanning("连续识别已暂停");
@@ -389,7 +452,8 @@ public class CaptureService extends AccessibilityService {
         scanning = false; generation++;
         handler.removeCallbacks(scanNext);
         if (overlay != null) { overlay.remove(); overlay = null; }
-        handler.removeCallbacks(capture);
+        handler.removeCallbacks(capture); handler.removeCallbacks(health);
+        if (trace != null) trace.close();
         if (instance == this) instance = null;
         worker.execute(() -> { if (recognizer != null) { recognizer.close(); recognizer = null; } });
         worker.shutdown();

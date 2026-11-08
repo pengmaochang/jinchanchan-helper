@@ -39,11 +39,11 @@ public final class BuyPolicy {
     public Decision decide(Frame frame) {
         if (!frame.layoutValid) return decision(Kind.WAIT, -1, "等待匹配的横屏画面");
         if (!frame.shopOpen) { shopClosed(); return decision(Kind.WAIT, -1, "已开启 · 等待打开商店"); }
-        if (!frame.readable || frame.gold < 0)
+        if (frame.gold < 0)
             return decision(Kind.WAIT, -1,
                 (frame.problem.isEmpty() ? "当前帧暂未读清" : frame.problem) + "，继续识别");
         if (pending != null) {
-            if (pending.kind == Kind.REFRESH && java.util.Arrays.stream(frame.names).allMatch(name -> "".equals(name)))
+            if (pending.kind == Kind.REFRESH && java.util.Arrays.stream(frame.names).allMatch(name -> "".equals(name)) && ++misses < 6)
                 return decision(Kind.WAIT, -1, "等待刷新动画结束");
             int completed = 0;
             if (pending.kind == Kind.BUY) for (int slot : pending.slots) if ("".equals(frame.names[slot])) completed++;
@@ -54,8 +54,9 @@ public final class BuyPolicy {
                 pending = null; misses = 0;
             } else if (pending.kind == Kind.BUY && !Arrays.equals(frame.names, previousNames)) {
                 pending = null; misses = 0;
-            } else if (++misses >= 2 && frame.gold == previousGold) {
-                // A tap that had no effect can be retried after several readable frames.
+            } else if (frame.readable && ++misses >= (frame.gold == previousGold ? 2 : 3)) {
+                // Income and imperfect gold OCR must not keep a completed gesture pending forever.
+                // Retry only by planning from this fresh frame; never count an unconfirmed purchase.
                 pending = null; misses = 0;
             } else return decision(Kind.WAIT, -1, "等待" + (pending.kind == Kind.BUY ? "购买" : "刷新") + "结果");
         }
@@ -68,6 +69,8 @@ public final class BuyPolicy {
             slots.add(i); balance -= cost;
         }
         if (!slots.isEmpty()) return batch(slots);
+        if (!frame.readable) return decision(Kind.WAIT, -1,
+            (frame.problem.isEmpty() ? "当前帧暂未读清" : frame.problem) + "，继续识别");
         if (!autoRefresh) return decision(Kind.WAIT, -1, "当前没有目标，等待你手动刷新");
         if (frame.gold - 2 < reserve) return decision(Kind.WAIT, -1, "等待金币达到刷新条件");
         return decision(Kind.REFRESH, -1, "没有目标，刷新商店");
