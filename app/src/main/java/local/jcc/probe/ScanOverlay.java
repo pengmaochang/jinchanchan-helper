@@ -190,17 +190,28 @@ final class ScanOverlay {
     }
     private final class BubbleView extends View {
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        BubbleView(Context context) { super(context); setClickable(true); }
+        private final Bitmap gameIcon;
+        BubbleView(Context context) {
+            super(context); setClickable(true);
+            gameIcon = BitmapFactory.decodeResource(getResources(), R.drawable.jcc_icon);
+            paint.setFilterBitmap(true);
+        }
         @Override protected void onDraw(Canvas canvas) {
             super.onDraw(canvas);
             float cx = getWidth() / 2f, cy = getHeight() / 2f, radius = Math.min(cx, cy) - dp(1);
             paint.setStyle(Paint.Style.FILL); paint.setColor(Color.argb(178, 19, 29, 42)); canvas.drawCircle(cx, cy, radius, paint);
+            if (gameIcon != null) {
+                int saved = canvas.save();
+                Path clip = new Path(); clip.addCircle(cx, cy, radius, Path.Direction.CW); canvas.clipPath(clip);
+                paint.setAlpha(190);
+                canvas.drawBitmap(gameIcon, null, new RectF(cx - radius, cy - radius, cx + radius, cy + radius), paint);
+                canvas.restoreToCount(saved); paint.setAlpha(255);
+            }
             paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(dp(1));
             paint.setColor(running ? Color.argb(225, 83, 229, 187) : Color.argb(170, 157, 175, 195));
             canvas.drawCircle(cx, cy, radius, paint);
-            paint.setStyle(Paint.Style.FILL); paint.setColor(Color.argb(232, 238, 245, 251));
-            paint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD)); paint.setTextSize(dp(18)); paint.setTextAlign(Paint.Align.CENTER);
-            canvas.drawText("铲", cx, cy + dp(2), paint);
+            paint.setStyle(Paint.Style.FILL);
+            paint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD)); paint.setTextAlign(Paint.Align.CENTER);
             paint.setColor(running ? Color.rgb(56, 191, 148) : Color.rgb(99, 114, 136));
             canvas.drawRoundRect(cx - dp(10), getHeight() - dp(14), cx + dp(10), getHeight() - dp(1), dp(6), dp(6), paint);
             paint.setColor(Color.WHITE); paint.setTextSize(dp(9));

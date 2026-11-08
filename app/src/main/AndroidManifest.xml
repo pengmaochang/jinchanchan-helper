@@ -2,7 +2,7 @@
     <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
     <instrumentation android:name=".OcrChecks" android:targetPackage="local.jcc.probe" android:label="Read-only OCR fixture check" />
     <instrumentation android:name=".DeckChecks" android:targetPackage="local.jcc.probe" android:label="Isolated named deck checks" />
-    <application android:label="金铲铲截图验证" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:allowBackup="false" android:supportsRtl="true">
+    <application android:label="金铲铲截图验证" android:icon="@drawable/jcc_icon" android:roundIcon="@drawable/jcc_icon" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:allowBackup="false" android:supportsRtl="true">
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
