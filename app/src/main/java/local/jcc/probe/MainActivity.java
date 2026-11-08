@@ -24,7 +24,7 @@ public class MainActivity extends Activity {
         layout.setOrientation(LinearLayout.VERTICAL);
         layout.setPadding(28, 64, 28, 28);
         TextView title = new TextView(this);
-        title.setText("金铲铲助手 v0.4 · 小米 14\n\n仅适配 2670×1200 横屏画面。填写目标 → 保存并显示悬浮窗 → 切到游戏 → 展开商店 → 点击开始。\n\n原生像素裁剪卡名和金币，离线中文识别。开始时悬浮窗自动移到商店下方。按名字顺序购买，可切换自动刷新。关商店或点暂停停止。首次测试可勾选“仅识别”。\n");
+        title.setText("金铲铲助手 v0.5 · 小米 14\n\n保存目标并显示悬浮窗，点击“开启”。保持开启时：打开商店自动买卡，关闭商店停止操作，再打开继续；点击同一个按钮“暂停”退出待命。\n\n单次识别，不做彩色/灰度交叉验证。偶发读不清自动继续等待。仅适配 2670×1200 横屏。\n");
         title.setTextSize(18);
         layout.addView(title);
         Button settings = new Button(this);

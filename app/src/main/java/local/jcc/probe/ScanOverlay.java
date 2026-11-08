@@ -26,7 +26,7 @@ final class ScanOverlay {
         windows = (WindowManager) service.getSystemService(Context.WINDOW_SERVICE);
         root = new LinearLayout(service);
         root.setOrientation(LinearLayout.VERTICAL);
-        int pad = dp(service, 8);
+        int pad = dp(service, 5);
         root.setPadding(pad, pad, pad, pad);
         GradientDrawable background = new GradientDrawable();
         background.setColor(Color.rgb(24, 31, 45));
@@ -34,28 +34,31 @@ final class ScanOverlay {
         root.setBackground(background);
         handle = new TextView(service);
         handle.setText("金铲铲助手 · 拖动 / 点此收起");
-        handle.setTextSize(12);
+        handle.setTextSize(11);
         handle.setTextColor(Color.WHITE);
         handle.setPadding(0, 4, 0, 8);
         root.addView(handle);
         status = new TextView(service);
         status.setTextColor(Color.rgb(180, 224, 255));
-        status.setTextSize(12);
+        status.setTextSize(11);
         status.setText("已暂停 · 开始后按目标购买");
-        status.setMaxLines(4);
+        status.setMaxLines(1);
         status.setEllipsize(android.text.TextUtils.TruncateAt.END);
         root.addView(status);
         refreshToggle = new Switch(service);
-        refreshToggle.setText("自动刷新"); refreshToggle.setTextSize(12); refreshToggle.setTextColor(Color.WHITE);
+        refreshToggle.setText("自动刷"); refreshToggle.setTextSize(11); refreshToggle.setTextColor(Color.WHITE);
         refreshToggle.setChecked(service.getSharedPreferences("probe", Context.MODE_PRIVATE).getBoolean("autoRefresh", false));
         refreshToggle.setOnCheckedChangeListener((button, checked) -> service.setAutoRefresh(checked));
-        root.addView(refreshToggle);
         controls = new LinearLayout(service);
-        startButton = addButton(service, "开始", service::startScanning);
-        addButton(service, "暂停", () -> service.stopScanning("已手动暂停"));
-        addButton(service, "关闭", service::hideOverlay);
+        controls.setGravity(Gravity.CENTER_VERTICAL);
+        startButton = addButton(service, "开启", service::toggleScanning);
+        controls.addView(refreshToggle, new LinearLayout.LayoutParams(dp(service, 94), dp(service, 34)));
+        Button close = new Button(service);
+        close.setText("×"); close.setTextSize(17); close.setMinWidth(0); close.setMinimumWidth(0); close.setPadding(0,0,0,0);
+        controls.addView(close, new LinearLayout.LayoutParams(dp(service, 28), dp(service, 34)));
+        close.setOnClickListener(v -> service.hideOverlay());
         root.addView(controls);
-        params = new WindowManager.LayoutParams(dp(service, 245), WindowManager.LayoutParams.WRAP_CONTENT,
+        params = new WindowManager.LayoutParams(dp(service, 205), WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
             PixelFormat.TRANSLUCENT);
@@ -78,8 +81,6 @@ final class ScanOverlay {
                 if (Math.abs(event.getRawX() - startX) + Math.abs(event.getRawY() - startY) < dp(service, 8)) {
                     compact = !compact;
                     status.setVisibility(compact ? View.GONE : View.VISIBLE);
-                    controls.setVisibility(compact ? View.GONE : View.VISIBLE);
-                    refreshToggle.setVisibility(compact ? View.GONE : View.VISIBLE);
                     updateTitle();
                     windows.updateViewLayout(root, params);
                 }
@@ -93,7 +94,7 @@ final class ScanOverlay {
         Button button = new Button(context);
         button.setText(title); button.setTextSize(12); button.setMinWidth(0); button.setMinimumWidth(0);
         button.setPadding(0, 0, 0, 0);
-        controls.addView(button, new LinearLayout.LayoutParams(0, dp(context, 38), 1));
+        controls.addView(button, new LinearLayout.LayoutParams(0, dp(context, 34), 1));
         button.setOnClickListener(v -> action.run());
         return button;
     }
@@ -113,12 +114,11 @@ final class ScanOverlay {
     void update(String message, boolean running) {
         this.running = running;
         status.setText(message);
-        startButton.setText(running ? "运行中" : "开始");
-        startButton.setEnabled(!running);
+        startButton.setText(running ? "暂停" : "开启");
         updateTitle();
     }
     private void updateTitle() {
-        handle.setText((running ? "运行中" : "已暂停") + (compact ? " · 点击展开" : " · 拖动 / 点击收起"));
+        handle.setText((running ? "● 已开启" : "○ 已暂停") + (compact ? " · 展开" : " · 拖动/收起"));
     }
     void dockBelowShop() {
         if (!attached) return;

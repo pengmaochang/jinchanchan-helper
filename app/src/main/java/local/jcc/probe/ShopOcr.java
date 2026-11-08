@@ -54,11 +54,10 @@ final class ShopOcr implements AutoCloseable {
         finally { crop.recycle(); }
     }
     Reading readCardName(Bitmap image, int slot) { return read(image, PhoneLayout.name(slot), false); }
-    private Reading[] nameBand(Bitmap image, boolean gray) {
+    private Reading[] nameBand(Bitmap image) {
         final int left = 468, top = 475;
         Bitmap crop = Bitmap.createBitmap(2130, 90, Bitmap.Config.ARGB_8888);
         Paint paint = new Paint();
-        if (gray) { ColorMatrix cm = new ColorMatrix(); cm.setSaturation(0); paint.setColorFilter(new ColorMatrixColorFilter(cm)); }
         new Canvas(crop).drawBitmap(image, new Rect(left, top, left + 2130, top + 90), new Rect(0, 0, 2130, 90), paint);
         try {
             Text text = Tasks.await(recognizer.process(InputImage.fromBitmap(crop, 0)), 5, TimeUnit.SECONDS);
@@ -81,15 +80,11 @@ final class ShopOcr implements AutoCloseable {
         } catch (Exception e) { throw new IllegalStateException(e); }
         finally { crop.recycle(); }
     }
-    private Reading[] batch(Bitmap image, boolean gray) {
+    private Reading[] batch(Bitmap image) {
         final int rowHeight = 110;
         Bitmap crop = Bitmap.createBitmap(440, rowHeight * 7, Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(crop); canvas.drawColor(Color.rgb(25, 30, 35));
         Paint paint = new Paint();
-        if (gray) {
-            ColorMatrix matrix = new ColorMatrix(); matrix.setSaturation(0);
-            paint.setColorFilter(new ColorMatrixColorFilter(matrix));
-        }
         for (int i = 0; i < 7; i++) {
             int[] rect = i < 5 ? PhoneLayout.name(i) : i == 5 ? PhoneLayout.GOLD : PhoneLayout.REFRESH;
             canvas.drawBitmap(image, new Rect(rect[0], rect[1], rect[0] + rect[2], rect[1] + rect[3]),
@@ -141,11 +136,9 @@ final class ShopOcr implements AutoCloseable {
             PhoneLayout.REFRESH[2], PhoneLayout.REFRESH[3]) >= .88;
         if (!f.shopOpen) f.shopOpen = read(image, PhoneLayout.REFRESH, false).text.contains("刷新");
         if (!f.shopOpen) return f;
-        Reading[] readings = batch(image, false);
-        Reading[] grayReadings = batch(image, true);
-        Reading[] band = nameBand(image, false);
-        Reading[] bandGray = nameBand(image, true);
-        f.gold = pairedNumber(readings[10], grayReadings[10]);
+        Reading[] readings = batch(image);
+        Reading[] band = nameBand(image);
+        f.gold = number(readings[10]);
         f.readable = f.gold >= 0;
         if (!f.readable) f.problem = "金币区域读取失败";
         for (int i = 0; i < 5; i++) {
@@ -159,11 +152,11 @@ final class ShopOcr implements AutoCloseable {
             }
             Reading name = band[i];
             f.names[i] = known != null ? known : name.text;
-            if (known == null && !agrees(name, bandGray[i])) {
+            if (known == null && name.text.isEmpty()) {
                 f.readable = false;
-                f.problem += (f.problem.isEmpty() ? "" : "；") + "第 " + (i + 1) + " 格卡名未交叉确认（" + name.text + " / " + bandGray[i].text + "）";
+                f.problem += (f.problem.isEmpty() ? "" : "；") + "第 " + (i + 1) + " 格暂未读到卡名";
             }
-            f.costs[i] = pairedNumber(readings[i + 5], grayReadings[i + 5]);
+            f.costs[i] = number(readings[i + 5]);
             byte[] feeMask = PhoneVision.mask(pixels, image.getWidth(), PhoneLayout.cost(i));
             double feeBest = .88;
             for (int n = 0; n < feeTemplates.length; n++) {
@@ -173,12 +166,9 @@ final class ShopOcr implements AutoCloseable {
         }
         return f;
     }
-    private boolean agrees(Reading a, Reading b) {
-        return !a.text.isEmpty() && a.text.equals(b.text) && Math.min(a.confidence, b.confidence) >= 40;
-    }
-    private int pairedNumber(Reading a, Reading b) {
-        if (!agrees(a, b) || a.text.length() > 3) return -1;
-        try { return Integer.parseInt(a.text); } catch (NumberFormatException e) { return -1; }
+    private int number(Reading reading) {
+        if (reading.text.isEmpty() || reading.text.length() > 3) return -1;
+        try { return Integer.parseInt(reading.text); } catch (NumberFormatException e) { return -1; }
     }
     @Override public void close() { recognizer.close(); }
 }

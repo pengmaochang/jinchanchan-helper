@@ -23,8 +23,8 @@ public final class BuyPolicy {
     private final int reserve;
     private boolean autoRefresh;
     private Decision pending;
-    private int previousGold, pendingCost, misses, uncertain;
-    private boolean opened;
+    private int previousGold, pendingCost, misses;
+    private String[] previousNames;
     public int bought, refreshed;
 
     public BuyPolicy(List<String> targets, int reserve, boolean autoRefresh) {
@@ -32,40 +32,42 @@ public final class BuyPolicy {
         this.targets = new ArrayList<>(targets); this.reserve = reserve; this.autoRefresh = autoRefresh;
     }
     public Decision decide(Frame frame) {
-        if (!frame.layoutValid) return decision(Kind.STOP, -1, "画面尺寸不匹配");
-        if (!frame.shopOpen) return decision(opened ? Kind.STOP : Kind.WAIT, -1,
-            opened ? "商店已关闭，已停止" : "等待手动展开商店");
-        opened = true;
+        if (!frame.layoutValid) return decision(Kind.WAIT, -1, "等待匹配的横屏画面");
+        if (!frame.shopOpen) { shopClosed(); return decision(Kind.WAIT, -1, "已开启 · 等待打开商店"); }
         if (!frame.readable || frame.gold < 0)
-            return decision(++uncertain >= 3 ? Kind.STOP : Kind.WAIT, -1,
-                (frame.problem.isEmpty() ? "卡名或金币识别不清" : frame.problem) + "，" + (uncertain >= 3 ? "已暂停" : "等待重读"));
-        uncertain = 0;
+            return decision(Kind.WAIT, -1,
+                (frame.problem.isEmpty() ? "当前帧暂未读清" : frame.problem) + "，继续识别");
         if (pending != null) {
             if (pending.kind == Kind.REFRESH && java.util.Arrays.stream(frame.names).allMatch(name -> "".equals(name)))
-                return decision(++misses >= 3 ? Kind.STOP : Kind.WAIT, -1, "刷新后卡牌尚未出现，等待画面稳定");
-            boolean confirmed = frame.gold == previousGold - pendingCost &&
-                (pending.kind == Kind.REFRESH || "".equals(frame.names[pending.slot]));
-            if (!confirmed) return decision(++misses >= 3 ? Kind.STOP : Kind.WAIT, -1,
-                "等待" + (pending.kind == Kind.BUY ? "购买" : "刷新") + "结果确认；不会重复点击");
-            if (pending.kind == Kind.BUY) bought++; else refreshed++;
-            pending = null; misses = 0;
+                return decision(Kind.WAIT, -1, "等待刷新动画结束");
+            boolean confirmed = pending.kind == Kind.BUY ? "".equals(frame.names[pending.slot]) :
+                frame.gold == previousGold - pendingCost || !Arrays.equals(frame.names, previousNames);
+            if (confirmed) {
+                if (pending.kind == Kind.BUY) bought++; else refreshed++;
+                pending = null; misses = 0;
+            } else if (++misses >= 8 && frame.gold == previousGold) {
+                // A tap that had no effect can be retried after several readable frames.
+                pending = null; misses = 0;
+            } else return decision(Kind.WAIT, -1, "等待" + (pending.kind == Kind.BUY ? "购买" : "刷新") + "结果");
         }
         for (String target : targets) for (int i = 0; i < 5; i++) if (target.equals(frame.names[i])) {
             int cost = frame.costs[i];
-            if (cost < 1 || cost > 10) return decision(Kind.STOP, -1, "目标费用识别不清");
-            if (frame.gold - cost < reserve) return decision(Kind.STOP, -1, "金币不足或已达保留底线");
+            if (cost < 1 || cost > 10) return decision(Kind.WAIT, -1, "等待读取目标费用");
+            if (frame.gold - cost < reserve) return decision(Kind.WAIT, -1, "等待金币达到购买条件");
             return decision(Kind.BUY, i, "购买 " + target + "（第 " + (i + 1) + " 格）");
         }
         if (!autoRefresh) return decision(Kind.WAIT, -1, "当前没有目标，等待你手动刷新");
-        if (frame.gold - 2 < reserve) return decision(Kind.STOP, -1, "刷新金币不足或已达保留底线");
+        if (frame.gold - 2 < reserve) return decision(Kind.WAIT, -1, "等待金币达到刷新条件");
         return decision(Kind.REFRESH, -1, "没有目标，刷新商店");
     }
     public void sent(Decision action, Frame frame) {
         if (action.kind != Kind.BUY && action.kind != Kind.REFRESH) throw new IllegalArgumentException();
         pending = action; previousGold = frame.gold;
         pendingCost = action.kind == Kind.BUY ? frame.costs[action.slot] : 2;
+        previousNames = frame.names.clone();
         misses = 0;
     }
+    public void shopClosed() { pending = null; previousNames = null; misses = 0; }
     public void setAutoRefresh(boolean enabled) { autoRefresh = enabled; }
     public boolean isAutoRefresh() { return autoRefresh; }
     private static Decision decision(Kind kind, int slot, String message) { return new Decision(kind, slot, message); }
