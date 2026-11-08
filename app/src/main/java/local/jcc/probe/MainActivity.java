@@ -17,7 +17,8 @@ import java.io.File;
 public class MainActivity extends Activity {
     private TextView status, serviceBadge;
     private static final int BG = 0xff10141d, CARD = 0xff1b2230, FIELD = 0xff121923, INK = 0xffedf0f5, MUTED = 0xff9ba8bd, GOLD = 0xffe8c478;
-    private EditText targetNames, goldReserve;
+    private EditText goldReserve;
+    private CardPicker targetCards;
     private EditText deckNameInput;
     private Spinner deckSpinner;
     private DeckStore deckStore;
@@ -59,18 +60,16 @@ public class MainActivity extends Activity {
         settings.setOnClickListener(v -> startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
         addButton(connection, settings);
 
-        LinearLayout decks = card(layout, "我的卡组", "每行一个卡名，按从上到下的顺序优先购买。");
+        LinearLayout decks = card(layout, "我的卡组", "搜索并添加棋子，展示顺序就是购买优先级。");
         deckSpinner = new Spinner(this, Spinner.MODE_DROPDOWN);
         deckSpinner.setBackground(shape(FIELD, 10));
         decks.addView(deckSpinner, new LinearLayout.LayoutParams(-1, dp(48)));
         space(decks, 14); decks.addView(label("卡组名称", 12, MUTED)); space(decks, 6);
         deckNameInput = input("给这套卡组起个名字"); deckNameInput.setSingleLine(true); decks.addView(deckNameInput);
         space(decks, 14); decks.addView(label("优先购买", 12, MUTED)); space(decks, 6);
-        targetNames = input("例如：可酷伯\n黛安娜");
-        targetNames.setMinLines(3); targetNames.setMaxLines(6); targetNames.setGravity(Gravity.TOP);
-        targetNames.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE);
-        targetNames.setText(getSharedPreferences("probe", MODE_PRIVATE).getString("targets", "可酷伯"));
-        decks.addView(targetNames); space(decks, 10);
+        targetCards = new CardPicker(this);
+        targetCards.setValue(getSharedPreferences("probe", MODE_PRIVATE).getString("targets", "可酷伯"));
+        decks.addView(targetCards); space(decks, 10);
         LinearLayout deckButtons = row();
         Button newDeck = button("新建", false);
         newDeck.setOnClickListener(v -> { deckSpinner.setSelection(0); newDeckEditor(); });
@@ -107,7 +106,7 @@ public class MainActivity extends Activity {
         reserveRow.addView(reserveText, new LinearLayout.LayoutParams(0, -2, 1));
         goldReserve = input("0"); goldReserve.setSingleLine(true); goldReserve.setGravity(Gravity.CENTER);
         goldReserve.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
-        goldReserve.setText(String.valueOf(getSharedPreferences("probe", MODE_PRIVATE).getInt("reserve", 0)));
+        goldReserve.setText(String.valueOf(getSharedPreferences("probe", MODE_PRIVATE).getInt("reserve", GoldReserve.DEFAULT)));
         reserveRow.addView(goldReserve, new LinearLayout.LayoutParams(dp(80), dp(48))); options.addView(reserveRow);
         space(options, 14);
         previewOnly = new CheckBox(this); previewOnly.setText("仅识别，不执行点击"); previewOnly.setTextSize(13); previewOnly.setTextColor(MUTED);
@@ -146,7 +145,7 @@ public class MainActivity extends Activity {
             update();
         }); addButton(diagnostics, capture);
         Button preview = button("查看最近截图", false); preview.setOnClickListener(v -> showPreview()); addButton(diagnostics, preview);
-        TextView version = label("v0.9.0  ·  小米 14  ·  本地离线识别", 11, MUTED);
+        TextView version = label("v0.9.1  ·  小米 14  ·  本地离线识别", 11, MUTED);
         version.setGravity(Gravity.CENTER); space(layout, 22); layout.addView(version);
 
         FrameLayout centered = new FrameLayout(this);
@@ -154,10 +153,11 @@ public class MainActivity extends Activity {
         centered.addView(layout, content);
         ScrollView scroll = new ScrollView(this); scroll.setFillViewport(true); scroll.setBackgroundColor(BG);
         scroll.addView(centered); scroll.setClipToPadding(false);
+        scroll.setPadding(0, statusBarHeight(), 0, dp(16));
         scroll.setOnApplyWindowInsetsListener((view, insets) -> {
             android.graphics.Insets bars = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
             int keyboard = insets.getInsets(WindowInsets.Type.ime()).bottom;
-            scroll.setPadding(bars.left, bars.top, bars.right, Math.max(bars.bottom, keyboard));
+            scroll.setPadding(bars.left, Math.max(bars.top, statusBarHeight()), bars.right, Math.max(bars.bottom, keyboard));
             return insets;
         });
         centered.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
@@ -166,6 +166,10 @@ public class MainActivity extends Activity {
         });
         reloadDeckChoices(deckStore.current().id);
         setContentView(scroll); scroll.requestApplyInsets(); layout.requestFocus(); update();
+    }
+    private int statusBarHeight() {
+        int id = getResources().getIdentifier("status_bar_height", "dimen", "android");
+        return id > 0 ? getResources().getDimensionPixelSize(id) : dp(28);
     }
     private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
     private LinearLayout column() { LinearLayout v = new LinearLayout(this); v.setOrientation(LinearLayout.VERTICAL); return v; }
@@ -218,10 +222,10 @@ public class MainActivity extends Activity {
             .setPositiveButton("关闭", (d, w) -> {}).setOnDismissListener(d -> bitmap.recycle()).show();
     }
     private void newDeckEditor() {
-        editingDeckId = null; deckNameInput.setText(""); targetNames.setText(""); deckNameInput.requestFocus();
+        editingDeckId = null; deckNameInput.setText(""); targetCards.setValue(""); deckNameInput.requestFocus();
     }
     private void loadDeckEditor(DeckStore.Deck deck) {
-        editingDeckId = deck.id; deckNameInput.setText(deck.name); targetNames.setText(deck.targets);
+        editingDeckId = deck.id; deckNameInput.setText(deck.name); targetCards.setValue(deck.targets);
     }
     private void reloadDeckChoices(String selected) {
         savedDecks = deckStore.all();
@@ -244,7 +248,7 @@ public class MainActivity extends Activity {
         deckSpinner.setAdapter(adapter); deckSpinner.setSelection(position);
     }
     private DeckStore.Deck persistDeck() {
-        DeckStore.Deck saved = deckStore.save(editingDeckId, deckNameInput.getText().toString(), targetNames.getText().toString());
+        DeckStore.Deck saved = deckStore.save(editingDeckId, deckNameInput.getText().toString(), targetCards.value());
         reloadDeckChoices(saved.id);
         if (CaptureService.instance != null) CaptureService.instance.selectDeck(saved.id);
         return saved;
@@ -263,7 +267,7 @@ public class MainActivity extends Activity {
     }
     private boolean saveSettings() {
         try {
-            java.util.List<String> targets = BuyPolicy.parseTargets(targetNames.getText().toString());
+            java.util.List<String> targets = BuyPolicy.parseTargets(targetCards.value());
             if (targets.isEmpty()) throw new IllegalArgumentException("请填写至少一个目标卡名");
             int reserve = Integer.parseInt(goldReserve.getText().toString().trim());
             if (reserve < 0 || reserve > 999) throw new IllegalArgumentException("保留金币应为 0～999");
@@ -285,6 +289,8 @@ public class MainActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         if (deckStore != null && editingDeckId != null && !deckStore.current().id.equals(editingDeckId)) reloadDeckChoices(deckStore.current().id);
+        if (goldReserve != null) goldReserve.setText(String.valueOf(getSharedPreferences("probe", MODE_PRIVATE).getInt("reserve", GoldReserve.DEFAULT)));
+        if (autoRefresh != null) autoRefresh.setChecked(getSharedPreferences("probe", MODE_PRIVATE).getBoolean("autoRefresh", false));
         handler.post(refresh);
     }
     @Override protected void onPause() { handler.removeCallbacks(refresh); super.onPause(); }

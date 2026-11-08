@@ -77,6 +77,15 @@ public class CaptureService extends AccessibilityService {
         if (policy != null) policy.setAutoRefresh(enabled);
         status(enabled ? "自动刷新已开启" : "自动刷新已关闭，等待手动刷新");
     }
+    int goldReserve() { return getSharedPreferences("probe", MODE_PRIVATE).getInt("reserve", GoldReserve.DEFAULT); }
+    void setGoldReserve(int value) {
+        if (value < 0 || value > 999) throw new IllegalArgumentException("保留金币应为 0～999");
+        generation++; handler.removeCallbacks(scanNext);
+        getSharedPreferences("probe", MODE_PRIVATE).edit().putInt("reserve", value).apply();
+        if (policy != null) policy.setReserve(value);
+        status("保留金币：" + value);
+        if (scanning && !choosingDeck) handler.post(scanNext);
+    }
     void startScanning() {
         if (scanning) return;
         android.content.SharedPreferences prefs = getSharedPreferences("probe", MODE_PRIVATE);
@@ -85,7 +94,7 @@ public class CaptureService extends AccessibilityService {
             deckName = deck.name;
             targets = BuyPolicy.parseTargets(deck.targets);
             if (targets.isEmpty()) throw new IllegalArgumentException("请先填写目标名字");
-            policy = new BuyPolicy(targets, prefs.getInt("reserve", 0), prefs.getBoolean("autoRefresh", false));
+            policy = new BuyPolicy(targets, prefs.getInt("reserve", GoldReserve.DEFAULT), prefs.getBoolean("autoRefresh", false));
         } catch (IllegalArgumentException e) { status(e.getMessage()); return; }
         previewOnly = prefs.getBoolean("previewOnly", false);
         scanning = true;
@@ -103,7 +112,7 @@ public class CaptureService extends AccessibilityService {
         android.content.SharedPreferences prefs = getSharedPreferences("probe", MODE_PRIVATE);
         generation++;
         handler.removeCallbacks(scanNext);
-        policy = new BuyPolicy(targets, prefs.getInt("reserve", 0), prefs.getBoolean("autoRefresh", false));
+        policy = new BuyPolicy(targets, prefs.getInt("reserve", GoldReserve.DEFAULT), prefs.getBoolean("autoRefresh", false));
         status("当前卡组：" + deckName);
         if (scanning && !choosingDeck) handler.post(scanNext);
     }

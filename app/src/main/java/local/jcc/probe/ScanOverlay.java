@@ -17,6 +17,7 @@ final class ScanOverlay {
     private final WindowManager.LayoutParams params;
     private final Switch assistSwitch, refreshSwitch;
     private final TextView deckLabel;
+    private final EditText reserveInput;
     private PopupMenu deckMenu;
     private boolean attached, expanded, running, syncing, moved;
     private float downX, downY;
@@ -39,6 +40,7 @@ final class ScanOverlay {
         bubble.setOnTouchListener((v, event) -> drag(v, event, true));
         panel = new LinearLayout(service);
         panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setFocusableInTouchMode(true);
         panel.setPadding(dp(12), dp(8), dp(12), dp(10));
         panel.setBackground(background(Color.argb(246, 24, 33, 48), 16, Color.rgb(61, 77, 97)));
         LinearLayout heading = new LinearLayout(service); heading.setGravity(Gravity.CENTER_VERTICAL);
@@ -61,6 +63,33 @@ final class ScanOverlay {
         refreshSwitch = makeSwitch("自动刷新");
         panel.addView(assistSwitch, new LinearLayout.LayoutParams(-1, dp(44)));
         panel.addView(refreshSwitch, new LinearLayout.LayoutParams(-1, dp(44)));
+        LinearLayout reserveRow = new LinearLayout(service); reserveRow.setGravity(Gravity.CENTER_VERTICAL);
+        TextView reserveLabel = text("保留金币", 13, Color.WHITE);
+        reserveRow.addView(reserveLabel, new LinearLayout.LayoutParams(0, dp(52), 1)); reserveLabel.setGravity(Gravity.CENTER_VERTICAL);
+        reserveInput = new EditText(service); reserveInput.setSingleLine(true); reserveInput.setTextSize(15);
+        reserveInput.setInputType(android.text.InputType.TYPE_CLASS_NUMBER); reserveInput.setTextColor(Color.rgb(232, 196, 120));
+        reserveInput.setGravity(Gravity.CENTER); reserveInput.setPadding(0, 0, 0, 0);
+        reserveInput.setSelectAllOnFocus(true); reserveInput.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(3)});
+        reserveInput.setBackground(background(Color.rgb(17, 25, 37), 8, Color.rgb(61, 77, 97)));
+        reserveInput.setText(String.valueOf(service.goldReserve())); reserveInput.setContentDescription("保留金币输入框");
+        reserveRow.addView(reserveInput, new LinearLayout.LayoutParams(dp(56), dp(44)));
+        LinearLayout steps = new LinearLayout(service); steps.setOrientation(LinearLayout.VERTICAL);
+        TextView up = text("▲", 12, Color.rgb(232, 196, 120)); up.setGravity(Gravity.CENTER); up.setContentDescription("增加保留金币到下一档");
+        TextView down = text("▼", 12, Color.rgb(232, 196, 120)); down.setGravity(Gravity.CENTER); down.setContentDescription("减少保留金币到上一档");
+        steps.addView(up, new LinearLayout.LayoutParams(dp(40), dp(28))); steps.addView(down, new LinearLayout.LayoutParams(dp(40), dp(28)));
+        up.setOnClickListener(v -> stepReserve(true)); down.setOnClickListener(v -> stepReserve(false)); reserveRow.addView(steps);
+        panel.addView(reserveRow);
+        reserveInput.setOnEditorActionListener((v, action, event) -> { finishReserveInput(); hideKeyboard(); reserveInput.clearFocus(); return true; });
+        reserveInput.setOnFocusChangeListener((v, focused) -> { if (!focused) finishReserveInput(); });
+        reserveInput.addTextChangedListener(new android.text.TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
+                if (syncing || s.length() == 0) return;
+                try { int value = Integer.parseInt(s.toString()); if (value != service.goldReserve()) service.setGoldReserve(value); }
+                catch (NumberFormatException ignored) {}
+            }
+            @Override public void afterTextChanged(android.text.Editable e) {}
+        });
         TextView close = text("关闭悬浮窗", 12, Color.rgb(237, 177, 171));
         close.setGravity(Gravity.CENTER);
         close.setBackground(background(Color.rgb(54, 40, 48), 8, Color.rgb(91, 59, 68)));
@@ -77,11 +106,26 @@ final class ScanOverlay {
         params = new WindowManager.LayoutParams(dp(44), dp(44), WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL |
                 WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH, PixelFormat.TRANSLUCENT);
+        params.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE;
         params.gravity = Gravity.TOP | Gravity.LEFT;
         params.x = dp(32); params.y = (int) (bounds().height() * .56);
         bubbleX = params.x; bubbleY = params.y;
         root.addView(bubble, new FrameLayout.LayoutParams(-1, -1));
         update("", false);
+    }
+    private void stepReserve(boolean up) {
+        reserveInput.clearFocus();
+        reserveInput.setText(String.valueOf(GoldReserve.step(service.goldReserve(), up)));
+        hideKeyboard();
+    }
+    private void finishReserveInput() {
+        if (reserveInput.getText().toString().trim().isEmpty()) {
+            syncing = true; reserveInput.setText(String.valueOf(service.goldReserve())); syncing = false;
+        }
+    }
+    private void hideKeyboard() {
+        android.view.inputmethod.InputMethodManager ime = (android.view.inputmethod.InputMethodManager) service.getSystemService(Context.INPUT_METHOD_SERVICE);
+        if (ime != null) ime.hideSoftInputFromWindow(root.getWindowToken(), 0);
     }
     private int dp(int value) { return (int) (value * service.getResources().getDisplayMetrics().density + .5f); }
     private Rect bounds() { return windows.getCurrentWindowMetrics().getBounds(); }
@@ -122,15 +166,18 @@ final class ScanOverlay {
         if (!attached || expanded) return;
         expanded = true; bubbleX = params.x; bubbleY = params.y;
         service.beginDeckSelection();
-        root.removeAllViews(); root.addView(panel, new FrameLayout.LayoutParams(-1, -2));
-        params.width = dp(228); params.height = WindowManager.LayoutParams.WRAP_CONTENT;
+        root.removeAllViews(); root.addView(panel, new FrameLayout.LayoutParams(-1, -2)); panel.requestFocus();
+        params.flags &= ~WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
+        params.width = dp(248); params.height = WindowManager.LayoutParams.WRAP_CONTENT;
         panel.measure(View.MeasureSpec.makeMeasureSpec(params.width, View.MeasureSpec.EXACTLY),
             View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
         clamp(); windows.updateViewLayout(root, params);
     }
     private void collapse() {
         if (!expanded) return;
+        finishReserveInput(); hideKeyboard(); reserveInput.clearFocus();
         expanded = false;
+        params.flags |= WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
         if (deckMenu != null) { PopupMenu menu = deckMenu; deckMenu = null; menu.dismiss(); }
         root.removeAllViews(); root.addView(bubble, new FrameLayout.LayoutParams(-1, -1));
         params.width = dp(44); params.height = dp(44); params.x = bubbleX; params.y = bubbleY;
@@ -146,6 +193,7 @@ final class ScanOverlay {
     }
     void show() { if (!attached) { clamp(); windows.addView(root, params); attached = true; } }
     void remove() {
+        finishReserveInput(); hideKeyboard();
         if (deckMenu != null) { PopupMenu menu = deckMenu; deckMenu = null; menu.dismiss(); }
         if (attached) { windows.removeView(root); attached = false; }
         expanded = false; service.endDeckSelection();
@@ -159,6 +207,7 @@ final class ScanOverlay {
         this.running = running; syncing = true;
         assistSwitch.setChecked(running);
         refreshSwitch.setChecked(service.getSharedPreferences("probe", Context.MODE_PRIVATE).getBoolean("autoRefresh", false));
+        if (!reserveInput.hasFocus()) reserveInput.setText(String.valueOf(service.goldReserve()));
         syncing = false;
         deckLabel.setText(service.currentDeckName() + "  ▾");
         bubble.setContentDescription((running ? "辅助已开启" : "辅助已暂停") + "，当前卡组 " + service.currentDeckName() + "，点击展开");

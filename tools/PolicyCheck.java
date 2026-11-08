@@ -54,6 +54,17 @@ public class PolicyCheck {
         p = new BuyPolicy(List.of("凯尔"), 1, false);
         f = frame(12, "凯尔", "凯尔", "凯尔"); Arrays.fill(f.costs, 5);
         check(Arrays.equals(p.decide(f).slots, new int[]{0,1}), "Expensive batch respects reserve");
+        p = new BuyPolicy(List.of("可酷伯"), 0, true);
+        p.setReserve(50);
+        check(p.decide(frame(50, "可酷伯")).kind == WAIT, "Raised live reserve prevents a purchase");
+        check(p.decide(frame(51, "可酷伯")).kind == BUY, "Purchase may reach exactly the reserve");
+        check(p.decide(frame(51, "洛")).kind == WAIT, "Refresh may not cross the reserve");
+        check(p.decide(frame(52, "洛")).kind == REFRESH, "Refresh may reach exactly the reserve");
+        p.setReserve(0);
+        check(p.decide(frame(1, "可酷伯")).kind == BUY, "Lowered live reserve takes effect immediately");
+        boolean invalidReserve = false;
+        try { p.setReserve(-1); } catch (IllegalArgumentException expected) { invalidReserve = true; }
+        check(invalidReserve, "Reject negative reserve");
         System.out.println("Policy checks passed.");
     }
 }

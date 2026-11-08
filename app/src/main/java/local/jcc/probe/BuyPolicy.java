@@ -25,7 +25,7 @@ public final class BuyPolicy {
         Decision(int[] slots, String message) { this.kind = Kind.BUY; this.slots = slots; this.slot = slots[0]; this.message = message; }
     }
     private final List<String> targets;
-    private final int reserve;
+    private int reserve;
     private boolean autoRefresh;
     private Decision pending;
     private int previousGold, pendingCost, misses;
@@ -84,6 +84,10 @@ public final class BuyPolicy {
     }
     public void shopClosed() { pending = null; previousNames = null; misses = 0; }
     public void setAutoRefresh(boolean enabled) { autoRefresh = enabled; }
+    public void setReserve(int value) {
+        if (value < 0 || value > 999) throw new IllegalArgumentException("保留金币应为 0～999");
+        reserve = value;
+    }
     public boolean isAutoRefresh() { return autoRefresh; }
     private static Decision batch(List<Integer> slots) {
         int[] ordered = slots.stream().mapToInt(Integer::intValue).toArray();

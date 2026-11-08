@@ -104,3 +104,11 @@ Instrumentation 结束会强制停止目标进程，可能使无障碍服务暂�
 官方接口：https://developer.android.com/reference/android/accessibilityservice/AccessibilityService
 
 中文 OCR 文档：https://developers.google.com/ml-kit/vision/text-recognition/v2/android
+
+## v0.9 界面与选卡
+
+主界面使用深色卡片和金铲子图标，截图工具默认收起。优先购买区输入部分中文卡名，点选候选加入带头像的标签；标签编号就是购买顺序，点击 × 移除，最多 20 张且不会重复添加。旧卡组按原顺序加载，目录外的旧名字也会保留。目录与头像离线打包，数据来源和筛选条件见 THIRD_PARTY_NOTICES.md。
+
+悬浮面板提供保留金币输入框（0～999），上下按钮切换 0/10/20/30/40/50/60/80/100，边界不循环；自定义值按最近的更高或更低预设切换。新配置默认 50，保留已有设置。修改立即保存并使旧识别结果失效，购买与刷新都不会主动花到设定值以下。空输入在结束编辑时恢复上次有效值。展开面板时暂停自动点击，收起继续待命。关闭悬浮窗会关闭自动拿卡并移除图标。
+
+实时预算断言在 PolicyCheck，预设/自定义值/边界检查在 tools/ReserveCheck.java。

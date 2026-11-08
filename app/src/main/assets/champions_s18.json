@@ -1,0 +1,415 @@
+{
+  "setId": 18,
+  "source": "https://www.dataj.cc/api/web/gamedata?setId=18",
+  "retrieved": "2026-11-09",
+  "champions": [
+    {
+      "id": "11500",
+      "name": "奥恩",
+      "price": 1,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_ornn.png"
+    },
+    {
+      "id": "11501",
+      "name": "洛",
+      "price": 1,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_rakan.png"
+    },
+    {
+      "id": "11502",
+      "name": "蕾欧娜",
+      "price": 1,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_leona.png"
+    },
+    {
+      "id": "11503",
+      "name": "可酷伯",
+      "price": 1,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_kobuko.png"
+    },
+    {
+      "id": "11504",
+      "name": "雷克塞",
+      "price": 1,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_reksai.png"
+    },
+    {
+      "id": "11505",
+      "name": "卡蜜尔",
+      "price": 1,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_camille.png"
+    },
+    {
+      "id": "11506",
+      "name": "阿卡丽",
+      "price": 1,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_akali.png"
+    },
+    {
+      "id": "11507",
+      "name": "韦鲁斯",
+      "price": 1,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_varus.png"
+    },
+    {
+      "id": "11508",
+      "name": "绯红树怪",
+      "price": 1,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_cinderling.png"
+    },
+    {
+      "id": "11509",
+      "name": "霞",
+      "price": 1,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_xayah.png"
+    },
+    {
+      "id": "11510",
+      "name": "卡尔玛",
+      "price": 1,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_karma.png"
+    },
+    {
+      "id": "11511",
+      "name": "苍蓝哨戒",
+      "price": 1,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_sentry.png"
+    },
+    {
+      "id": "11512",
+      "name": "维迦",
+      "price": 1,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_veigar.png"
+    },
+    {
+      "id": "12500",
+      "name": "峡谷迅捷蟹",
+      "price": 2,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_scuttle.png"
+    },
+    {
+      "id": "12501",
+      "name": "阿利斯塔",
+      "price": 2,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_alistar.png"
+    },
+    {
+      "id": "12502",
+      "name": "瑟庄妮",
+      "price": 2,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_sejuani.png"
+    },
+    {
+      "id": "12503",
+      "name": "慎",
+      "price": 2,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_shen.png"
+    },
+    {
+      "id": "12504",
+      "name": "伊莉丝",
+      "price": 2,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_elise.png"
+    },
+    {
+      "id": "12505",
+      "name": "约里克",
+      "price": 1,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_yorick.png"
+    },
+    {
+      "id": "12507",
+      "name": "暗影狼",
+      "price": 2,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_murkwolf.png"
+    },
+    {
+      "id": "12508",
+      "name": "沃里克",
+      "price": 2,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_warwick.png"
+    },
+    {
+      "id": "12509",
+      "name": "芸阿娜",
+      "price": 2,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_yunara.png"
+    },
+    {
+      "id": "12510",
+      "name": "凯特琳",
+      "price": 2,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_caitlyn.png"
+    },
+    {
+      "id": "12511",
+      "name": "乐芙兰",
+      "price": 2,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_leblanc.png"
+    },
+    {
+      "id": "12512",
+      "name": "凯尔",
+      "price": 2,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_kayle.png"
+    },
+    {
+      "id": "12513",
+      "name": "魔沼蛙",
+      "price": 2,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_gromp.png"
+    },
+    {
+      "id": "12514",
+      "name": "提莫",
+      "price": 2,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_teemo.png"
+    },
+    {
+      "id": "13500",
+      "name": "赫卡里姆",
+      "price": 3,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_hecarim.png"
+    },
+    {
+      "id": "13501",
+      "name": "蔚",
+      "price": 3,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_vi.png"
+    },
+    {
+      "id": "13502",
+      "name": "费德提克",
+      "price": 3,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_fiddlesticks.png"
+    },
+    {
+      "id": "13503",
+      "name": "远古石甲虫",
+      "price": 3,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_krug.png"
+    },
+    {
+      "id": "13504",
+      "name": "雷恩加尔",
+      "price": 3,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_rengar.png"
+    },
+    {
+      "id": "13505",
+      "name": "卡兹克",
+      "price": 3,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_khazix.png"
+    },
+    {
+      "id": "13506",
+      "name": "黛安娜",
+      "price": 3,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_diana.png"
+    },
+    {
+      "id": "13507",
+      "name": "易",
+      "price": 3,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_masteryi.png"
+    },
+    {
+      "id": "13508",
+      "name": "崔丝塔娜",
+      "price": 3,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_tristana.png"
+    },
+    {
+      "id": "13509",
+      "name": "深红锋喙鸟",
+      "price": 3,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_raptor.png"
+    },
+    {
+      "id": "13510",
+      "name": "阿兹尔",
+      "price": 3,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_azir.png"
+    },
+    {
+      "id": "13511",
+      "name": "卡西奥佩娅",
+      "price": 3,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_cassiopeia.png"
+    },
+    {
+      "id": "13512",
+      "name": "克格莫",
+      "price": 3,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_kogmaw.png"
+    },
+    {
+      "id": "13515",
+      "name": "拉莫斯",
+      "price": 3,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_rammus.png"
+    },
+    {
+      "id": "14500",
+      "name": "苍蓝雕纹魔像",
+      "price": 4,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_sentinel.png"
+    },
+    {
+      "id": "14501",
+      "name": "莫甘娜",
+      "price": 4,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_morgana.png"
+    },
+    {
+      "id": "14502",
+      "name": "莉莉娅",
+      "price": 4,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_lillia.png"
+    },
+    {
+      "id": "14503",
+      "name": "阿木木",
+      "price": 4,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_amumu.png"
+    },
+    {
+      "id": "14504",
+      "name": "墨菲特",
+      "price": 4,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_malphite.png"
+    },
+    {
+      "id": "14505",
+      "name": "瑟提",
+      "price": 4,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_sett.png"
+    },
+    {
+      "id": "14506",
+      "name": "绯红印记树怪",
+      "price": 4,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_brambleback.png"
+    },
+    {
+      "id": "14507",
+      "name": "奈德丽",
+      "price": 4,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_nidalee.png"
+    },
+    {
+      "id": "14508",
+      "name": "伊泽瑞尔",
+      "price": 4,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_ezreal.png"
+    },
+    {
+      "id": "14509",
+      "name": "厄斐琉斯",
+      "price": 4,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_aphelios.png"
+    },
+    {
+      "id": "14510",
+      "name": "希维尔",
+      "price": 4,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_sivir.png"
+    },
+    {
+      "id": "14511",
+      "name": "阿狸",
+      "price": 4,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_ahri.png"
+    },
+    {
+      "id": "14512",
+      "name": "婕拉",
+      "price": 4,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_zyra.png"
+    },
+    {
+      "id": "14513",
+      "name": "索拉卡",
+      "price": 4,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_soraka.png"
+    },
+    {
+      "id": "15450",
+      "name": "茂凯",
+      "price": 5,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_maokai.png"
+    },
+    {
+      "id": "15451",
+      "name": "塔里克",
+      "price": 5,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_taric.png"
+    },
+    {
+      "id": "15452",
+      "name": "纳尔",
+      "price": 5,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_gnar.png"
+    },
+    {
+      "id": "15453",
+      "name": "凯南",
+      "price": 5,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_kennen.png"
+    },
+    {
+      "id": "15454",
+      "name": "艾希",
+      "price": 5,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_ashe.png"
+    },
+    {
+      "id": "15455",
+      "name": "德莱文",
+      "price": 5,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_draven.png"
+    },
+    {
+      "id": "15456",
+      "name": "拉露恩",
+      "price": 5,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_alune.png"
+    },
+    {
+      "id": "15457",
+      "name": "艾翁",
+      "price": 5,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_ivern.png"
+    },
+    {
+      "id": "15458",
+      "name": "远古巨龙",
+      "price": 5,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_elderdragon.png"
+    },
+    {
+      "id": "15459",
+      "name": "拉克丝",
+      "price": 5,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_lux_base.png"
+    },
+    {
+      "id": "18442",
+      "name": "沙兵",
+      "price": 3,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_azirsoldier.png"
+    },
+    {
+      "id": "18445",
+      "name": "婕拉花",
+      "price": 4,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_zyra_flower.png"
+    },
+    {
+      "id": "18702",
+      "name": "小型石甲虫",
+      "price": 3,
+      "picture": "https://img.dataj.cc/images/s18/hero/s18_head_krug.png"
+    }
+  ]
+}
