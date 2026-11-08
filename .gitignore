@@ -7,3 +7,11 @@ captures/
 .idea/
 dist/
 **/__pycache__/
+
+# Local signing material and packaged builds
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.apk
+*.aab
