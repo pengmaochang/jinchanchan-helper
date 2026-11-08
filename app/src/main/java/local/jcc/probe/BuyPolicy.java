@@ -29,8 +29,12 @@ public final class BuyPolicy {
     private int reserve;
     private boolean autoRefresh;
     private Decision pending;
-    private int previousGold, pendingCost, misses;
+    private int previousGold, misses;
     private String[] previousNames;
+    private String[] stableNames;
+    private int[] stableCosts;
+    private int stableReads, stableOffset;
+    private boolean refreshTransition;
     public int bought, refreshed;
 
     public BuyPolicy(List<String> targets, int reserve, boolean autoRefresh) {
@@ -39,21 +43,32 @@ public final class BuyPolicy {
     }
     public Decision decide(Frame frame) {
         if (!frame.layoutValid) return decision(Kind.WAIT, -1, "等待匹配的横屏画面");
-        if (!frame.shopOpen) { shopClosed(); return decision(Kind.WAIT, -1, "已开启 · 等待打开商店"); }
+        if (!frame.shopOpen) {
+            // A refresh animation can briefly hide the button. Do not lose the refresh barrier.
+            if (pending != null && pending.kind == Kind.REFRESH) { stableReads = 0; stableNames = null; stableCosts = null; }
+            else shopClosed();
+            return decision(Kind.WAIT, -1, "已开启 · 等待打开商店");
+        }
+        observe(frame);
         if (frame.gold < 0)
             return decision(Kind.WAIT, -1,
                 (frame.problem.isEmpty() ? "当前帧暂未读清" : frame.problem) + "，继续识别");
         if (pending != null) {
-            if (pending.kind == Kind.REFRESH && java.util.Arrays.stream(frame.names).allMatch(name -> "".equals(name)) && ++misses < 6)
-                return decision(Kind.WAIT, -1, "等待刷新动画结束");
+            if (pending.kind == Kind.REFRESH) {
+                if (Arrays.stream(frame.names).allMatch(name -> "".equals(name))) refreshTransition = true;
+                boolean full = frame.readable && Arrays.stream(frame.names).allMatch(name -> name != null && !name.isEmpty());
+                if (!full || stableReads < 2 || (!refreshTransition && Arrays.equals(frame.names, previousNames)))
+                    return decision(Kind.WAIT, -1, "等待刷新后的新卡面稳定");
+                refreshed++; pending = null; misses = 0;
+            }
+        }
+        if (pending != null) {
             int completed = 0;
-            if (pending.kind == Kind.BUY) for (int slot : pending.slots) if ("".equals(frame.names[slot])) completed++;
-            boolean confirmed = pending.kind == Kind.BUY ? completed > 0 :
-                frame.gold == previousGold - pendingCost || !Arrays.equals(frame.names, previousNames);
-            if (confirmed) {
-                if (pending.kind == Kind.BUY) bought += completed; else refreshed++;
+            for (int slot : pending.slots) if ("".equals(frame.names[slot])) completed++;
+            if (completed > 0) {
+                bought += completed;
                 pending = null; misses = 0;
-            } else if (pending.kind == Kind.BUY && !Arrays.equals(frame.names, previousNames)) {
+            } else if (!Arrays.equals(frame.names, previousNames)) {
                 pending = null; misses = 0;
             } else if (frame.readable && ++misses >= (frame.gold == previousGold ? 2 : 3)) {
                 // Income and imperfect gold OCR must not keep a completed gesture pending forever.
@@ -74,19 +89,22 @@ public final class BuyPolicy {
             (frame.problem.isEmpty() ? "当前帧暂未读清" : frame.problem) + "，继续识别");
         if (!autoRefresh) return decision(Kind.WAIT, -1, "当前没有目标，等待你手动刷新");
         if (frame.gold - 2 < reserve) return decision(Kind.WAIT, -1, "等待金币达到刷新条件");
+        if (stableReads < 2) return decision(Kind.WAIT, -1, "等待商店卡面稳定再刷新");
         return decision(Kind.REFRESH, -1, "没有目标，刷新商店");
     }
     public void sent(Decision action, Frame frame) {
         if (action.kind != Kind.BUY && action.kind != Kind.REFRESH) throw new IllegalArgumentException();
         pending = action; previousGold = frame.gold;
-        pendingCost = 0;
-        if (action.kind == Kind.BUY) {
-            for (int slot : action.slots) pendingCost += frame.costs[slot];
-        } else pendingCost = 2;
         previousNames = frame.names.clone();
-        misses = 0;
+        misses = 0; refreshTransition = false;
+        stableReads = 0; stableNames = null; stableCosts = null;
     }
-    public void shopClosed() { pending = null; previousNames = null; misses = 0; }
+    private void observe(Frame frame) {
+        if (!frame.readable) { stableReads = 0; stableNames = null; stableCosts = null; return; }
+        if (frame.offsetX == stableOffset && Arrays.equals(frame.names, stableNames) && Arrays.equals(frame.costs, stableCosts)) stableReads++;
+        else { stableReads = 1; stableNames = frame.names.clone(); stableCosts = frame.costs.clone(); stableOffset = frame.offsetX; }
+    }
+    public void shopClosed() { pending = null; previousNames = null; misses = 0; stableReads = 0; stableNames = null; stableCosts = null; refreshTransition = false; }
     public void setAutoRefresh(boolean enabled) { autoRefresh = enabled; }
     public void setReserve(int value) {
         if (value < 0 || value > 999) throw new IllegalArgumentException("保留金币应为 0～999");

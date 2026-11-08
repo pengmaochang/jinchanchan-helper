@@ -22,6 +22,7 @@ public class CaptureService extends AccessibilityService {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private boolean busy;
+    private final ShopActionGate actionGate = new ShopActionGate();
     private AssistTrace trace;
     private long captureRequest, lastFrameTrace, waitSince, lastRecovery;
     private String waitMessage = "";
@@ -57,7 +58,7 @@ public class CaptureService extends AccessibilityService {
     @Override protected void onServiceConnected() {
         instance = this;
         if (trace == null) trace = new AssistTrace(this);
-        record("service connected version=" + "0.9.3");
+        record("service connected version=" + "0.9.4");
         handler.removeCallbacks(health); handler.postDelayed(health, 1000);
         status("服务已连接。可显示悬浮窗进行商店识别。");
     }
@@ -189,6 +190,9 @@ public class CaptureService extends AccessibilityService {
     }
     private void scan() {
         if (!scanning || choosingDeck) return;
+        long actionDelay = actionGate.delay(SystemClock.elapsedRealtime());
+        if (actionDelay < 0) return;
+        if (actionDelay > 0) { handler.removeCallbacks(scanNext); handler.postDelayed(scanNext, actionDelay); return; }
         if (!isGameForeground()) { waitForGame("已开启 · 等待游戏和商店"); return; }
         if (overlay != null && overlay.overlapsShop()) {
             overlay.dockBelowShop();
@@ -325,13 +329,20 @@ public class CaptureService extends AccessibilityService {
         }
         android.accessibilityservice.GestureDescription gesture = builder.build();
         final long dispatchStarted = SystemClock.elapsedRealtime();
+        if (actionGate.delay(dispatchStarted) != 0) { handler.post(scanNext); return; }
+        final long gestureId = actionGate.begin(action.kind, dispatchStarted);
+        final long actionToken = ++generation;
+        handler.removeCallbacks(scanNext);
+        policy.sent(action, frame);
         phase("gesture");
+        record("dispatch id=" + gestureId + " generation=" + actionToken + " action=" + action.kind +
+            " slots=" + java.util.Arrays.toString(action.slots) + " offset=" + frame.offsetX + " " + frame.summary());
         final boolean[] finished = {false};
         final Runnable gestureTimeout = () -> {
-            if (finished[0] || !scanning || token != generation) return;
-            finished[0] = true; generation++; phase("idle");
-            record("gesture callback timeout action=" + action.kind);
-            retryFrame("点击回调超时，重新读取商店");
+            if (finished[0]) return;
+            finished[0] = true; actionGate.finish(gestureId, SystemClock.elapsedRealtime()); phase("idle");
+            record("gesture callback timeout id=" + gestureId + " action=" + action.kind);
+            if (scanning) stopScanning("点击回调超时，已暂停，请重新开启自动拿卡");
         };
         handler.postDelayed(gestureTimeout, 1200);
         try {
@@ -340,28 +351,40 @@ public class CaptureService extends AccessibilityService {
                     handler.removeCallbacks(gestureTimeout);
                     if (finished[0]) return;
                     finished[0] = true;
-                    if (!scanning || token != generation) return;
-                    phase("idle");
-                    policy.sent(action, frame);
-                    android.util.Log.i("JccAssist", "Gesture completed: " + action.message + " · scheduled=" + timing.totalMs + "ms");
                     long completed = SystemClock.elapsedRealtime();
+                    if (!actionGate.finish(gestureId, completed)) return;
+                    phase("idle");
+                    record("completed id=" + gestureId + " action=" + action.kind + " actual_ms=" + (completed-dispatchStarted));
+                    if (!scanning) return;
+                    if (actionToken != generation) { handler.post(scanNext); return; }
+                    android.util.Log.i("JccAssist", "Gesture completed: " + action.message + " · scheduled=" + timing.totalMs + "ms");
                     android.util.Log.i("JccPerf", "action=" + action.kind + " count=" + count + " scheduled_ms=" + timing.totalMs + " actual_ms=" + (completed - dispatchStarted));
                     if (action.kind == BuyPolicy.Kind.REFRESH) {
                         if (lastRefreshCompleted != 0) android.util.Log.i("JccPerf", "refresh_gap_ms=" + (completed - lastRefreshCompleted));
                         lastRefreshCompleted = completed;
                     }
-                    handler.post(scanNext);
+                    handler.removeCallbacks(scanNext); handler.post(scanNext);
                 }
                 @Override public void onCancelled(android.accessibilityservice.GestureDescription g) {
                     handler.removeCallbacks(gestureTimeout);
                     if (finished[0]) return;
                     finished[0] = true;
-                    if (token == generation) { phase("idle"); retryFrame("上次点击被取消，继续识别"); }
+                    if (!actionGate.finish(gestureId, SystemClock.elapsedRealtime())) return;
+                    phase("idle"); record("cancelled id=" + gestureId + " action=" + action.kind);
+                    if (scanning) retryFrame("点击被取消，等待当前商店确认");
                 }
             }, handler);
-            if (!accepted) { handler.removeCallbacks(gestureTimeout); finished[0] = true; phase("idle"); stopScanning("系统拒绝手势，请确认无障碍服务已重新启用"); }
-        } catch (RuntimeException e) { handler.removeCallbacks(gestureTimeout); finished[0] = true; phase("idle"); stopScanning("点击失败：" + e.getMessage()); }
+            if (!accepted) {
+                handler.removeCallbacks(gestureTimeout); finished[0] = true;
+                actionGate.finish(gestureId, SystemClock.elapsedRealtime()); phase("idle");
+                stopScanning("系统拒绝手势，请确认无障碍服务已重新启用");
+            }
+        } catch (RuntimeException e) {
+            handler.removeCallbacks(gestureTimeout); finished[0] = true;
+            actionGate.finish(gestureId, SystemClock.elapsedRealtime()); phase("idle"); stopScanning("点击失败：" + e.getMessage());
+        }
     }
+
     void scheduleCapture() {
         stopScanning("连续识别已暂停");
         if (busy) return;

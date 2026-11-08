@@ -145,7 +145,7 @@ public class MainActivity extends Activity {
             update();
         }); addButton(diagnostics, capture);
         Button preview = button("查看最近截图", false); preview.setOnClickListener(v -> showPreview()); addButton(diagnostics, preview);
-        TextView version = label("v0.9.3  ·  小米 14  ·  本地离线识别", 11, MUTED);
+        TextView version = label("v0.9.4  ·  小米 14  ·  本地离线识别", 11, MUTED);
         version.setGravity(Gravity.CENTER); space(layout, 22); layout.addView(version);
 
         FrameLayout centered = new FrameLayout(this);
