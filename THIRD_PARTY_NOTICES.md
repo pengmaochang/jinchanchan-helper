@@ -1,12 +1,12 @@
-# OCR dependencies
+# OCR and build dependencies
 
-The APK bundles Tesseract4Android 4.9.0 and official Tesseract fast Chinese/English models. Binary caches are excluded from Git; `tools/prepare_ocr.py` verifies pinned SHA-256 checksums.
+The APK uses Google's bundled Chinese Text Recognition model, `com.google.mlkit:text-recognition-chinese:16.0.1`, resolved from Google's Maven repository by Gradle. The model is packaged into the app; image processing stays on the device. The app removes the INTERNET permission from the merged manifest.
 
-- Tesseract4Android: https://github.com/adaptech-cz/Tesseract4Android/tree/4.9.0 — Apache License 2.0. Copyright 2019 Adaptech s.r.o., Robert Pösel.
-- Tesseract OCR: https://github.com/tesseract-ocr/tesseract — Apache License 2.0.
-- Fast models: https://github.com/tesseract-ocr/tessdata_fast — Apache License 2.0.
-- Leptonica: https://github.com/DanBloomberg/leptonica — BSD 2-Clause license.
-- libjpeg: https://www.ijg.org — Independent JPEG Group license.
-- libpng: https://libpng.org/pub/png/libpng.html — PNG Reference Library License.
+- ML Kit documentation: https://developers.google.com/ml-kit/vision/text-recognition/v2/android
+- ML Kit terms: https://developers.google.com/ml-kit/terms
+- Google APIs terms: https://developers.google.com/terms
+- AndroidX source and licenses: https://android.googlesource.com/platform/frameworks/support/
 
-The relevant bundled-library license texts are supplied in `app/src/main/assets/licenses/` and distributed with the APK. See the upstream projects for source code and copyright details.
+ML Kit's published Maven POMs identify their applicable terms and transitive dependencies. Packaged META-INF notices from dependencies are handled by the Android Gradle plugin. No Tesseract library or language model is shipped in v0.4.
+
+Portable development tools are kept outside Git under `.tools/`: Gradle 8.9 (Apache 2.0), Eclipse Temurin JDK 17 (GPLv2 with the Classpath Exception), and Android SDK tools (Android SDK license). Their archives include the upstream license notices. Preparation scripts verify the pinned archive checksums.

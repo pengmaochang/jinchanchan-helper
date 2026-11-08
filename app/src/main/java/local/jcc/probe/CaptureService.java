@@ -178,10 +178,10 @@ public class CaptureService extends AccessibilityService {
             busy = false;
             if (!scanning || token != generation) return;
             if (answer == null) { stopScanning("识别失败：" + failure); return; }
-            if (!answer.layoutValid) { stopScanning("请使用当前横屏游戏布局"); return; }
+            if (!answer.layoutValid) { stopScanning(answer.problem); return; }
             if (previewOnly) {
                 status("仅识别 · " + answer.summary() + "\n商店=" + answer.shopOpen + " 可读=" + answer.readable +
-                    " · " + (SystemClock.elapsedRealtime() - started) + "ms");
+                    " · " + (SystemClock.elapsedRealtime() - started) + "ms\n" + answer.problem);
                 handler.postDelayed(scanNext, 100); return;
             }
             BuyPolicy.Decision action = policy.decide(answer);
@@ -227,6 +227,7 @@ public class CaptureService extends AccessibilityService {
     }
     private void tap(long token, BuyPolicy.Decision action, BuyPolicy.Frame frame, int width, int height) {
         if (!scanning || token != generation) return;
+        if (!PhoneLayout.accepts(width, height)) { stopScanning("画面尺寸已变化，点击取消"); return; }
         if (action.kind == BuyPolicy.Kind.REFRESH && !policy.isAutoRefresh()) {
             status("自动刷新已关闭，取消待执行刷新"); handler.postDelayed(scanNext, 100); return;
         }
@@ -235,13 +236,13 @@ public class CaptureService extends AccessibilityService {
             overlay.dockBelowShop(); handler.postDelayed(scanNext, 100); return;
         }
         java.util.concurrent.ThreadLocalRandom random = java.util.concurrent.ThreadLocalRandom.current();
-        float x = (action.kind == BuyPolicy.Kind.BUY ? ShopVision.LEFT[action.slot] + 140 : 1915) + random.nextInt(-7, 8);
-        float y = (action.kind == BuyPolicy.Kind.BUY ? 240 : 605) + random.nextInt(-9, 10);
-        if (overlay != null && overlay.blocksPoint(x * width / 2048f, y * height / 920f)) {
+        float x = (action.kind == BuyPolicy.Kind.BUY ? PhoneLayout.NAME_X[action.slot] + 183 : 2497) + random.nextInt(-9, 10);
+        float y = (action.kind == BuyPolicy.Kind.BUY ? 313 : 789) + random.nextInt(-12, 13);
+        if (overlay != null && overlay.blocksPoint(x, y)) {
             stopScanning("悬浮窗遮住点击位置，请移动后重新开始"); return;
         }
         android.graphics.Path path = new android.graphics.Path();
-        path.moveTo(x * width / 2048f, y * height / 920f);
+        path.moveTo(x, y);
         android.accessibilityservice.GestureDescription gesture = new android.accessibilityservice.GestureDescription.Builder()
             .addStroke(new android.accessibilityservice.GestureDescription.StrokeDescription(path, 0, 35 + random.nextInt(31))).build();
         try {

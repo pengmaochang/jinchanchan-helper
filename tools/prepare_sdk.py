@@ -4,6 +4,7 @@ from pathlib import Path
 import hashlib
 import urllib.request
 import zipfile
+import shutil
 
 ROOT = Path(__file__).resolve().parents[1]
 TOOLS = ROOT / '.tools'
@@ -27,6 +28,11 @@ def download(job):
         package.extractall(TOOLS / directory)
     print(directory + ' ready', flush=True)
 
-if __name__ == '__main__':
+def main():
     with ThreadPoolExecutor(2) as pool:
         list(pool.map(download, JOBS))
+    shutil.copytree(TOOLS / 'platform/android-35', TOOLS / 'sdk/platforms/android-35', dirs_exist_ok=True)
+    shutil.copytree(TOOLS / 'buildtools/android-15', TOOLS / 'sdk/build-tools/35.0.0', dirs_exist_ok=True)
+
+if __name__ == '__main__':
+    main()

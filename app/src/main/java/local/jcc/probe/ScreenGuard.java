@@ -3,18 +3,19 @@ package local.jcc.probe;
 /** Localized white-text signatures used to reject a stale OCR frame before a gesture. */
 final class ScreenGuard {
     static byte[][] capture(int[] pixels, int width, int height) {
+        if (!PhoneLayout.accepts(width, height) || pixels.length != width * height)
+            throw new IllegalArgumentException("仅支持 2670×1200 原始截图");
         byte[][] result = new byte[7][];
-        for (int i = 0; i < 5; i++) result[i] = ShopVision.strip(pixels, width, height, i);
-        result[5] = crop(pixels, width, height, 1894, 789, 86, 58);
-        result[6] = crop(pixels, width, height, 1875, 608, 82, 44);
+        for (int i = 0; i < 5; i++) result[i] = crop(pixels, width, PhoneLayout.name(i));
+        result[5] = crop(pixels, width, PhoneLayout.GOLD);
+        result[6] = crop(pixels, width, PhoneLayout.REFRESH);
         return result;
     }
-    private static byte[] crop(int[] p, int w, int h, int left, int top, int width, int height) {
+    static byte[] crop(int[] p, int w, int[] rect) {
+        int left = rect[0], top = rect[1], width = rect[2], height = rect[3];
         byte[] out = new byte[width * height];
         for (int y = 0; y < height; y++) for (int x = 0; x < width; x++) {
-            int sx = Math.min(w - 1, (int) ((left + x + .5) * w / 2048));
-            int sy = Math.min(h - 1, (int) ((top + y + .5) * h / 920));
-            int c = p[sy * w + sx], r = c >> 16 & 255, g = c >> 8 & 255, b = c & 255;
+            int c = p[(top + y) * w + left + x], r = c >> 16 & 255, g = c >> 8 & 255, b = c & 255;
             out[y * width + x] = (byte) (r > 185 && g > 180 && b > 155 &&
                 Math.max(r, Math.max(g, b)) - Math.min(r, Math.min(g, b)) < 85 ? 1 : 0);
         }

@@ -12,15 +12,16 @@ public class OcrChecks extends Instrumentation {
         Bundle result = new Bundle();
         try (ShopOcr ocr = new ShopOcr(getTargetContext())) {
             StringBuilder log = new StringBuilder();
-            for (int i = 0; i < 3; i++) {
-                File file = new File(getTargetContext().getExternalFilesDir(null), "fixture" + i + ".jpg");
+            StringBuilder failures = new StringBuilder();
+            for (int i = 0; i < 4; i++) {
+                File file = new File(getTargetContext().getExternalFilesDir(null), "fixture" + i + (i == 3 ? ".png" : ".jpg"));
                 Bitmap image = BitmapFactory.decodeFile(file.getAbsolutePath());
                 if (image == null) throw new IllegalStateException("样本不存在：" + file);
                 long start = android.os.SystemClock.elapsedRealtime();
                 BuyPolicy.Frame f;
                 try {
                     f = ocr.analyze(image);
-                    if (i == 1) for (int slot = 0; slot < 5; slot++) {
+                    if (i == 1 || i == 3) for (int slot = 0; slot < 5; slot++) {
                         ShopOcr.Reading raw = ocr.readCardName(image, slot);
                         log.append("raw name ").append(slot).append(": ").append(raw.text).append(" / ").append(raw.confidence).append('\n');
                     }
@@ -29,11 +30,17 @@ public class OcrChecks extends Instrumentation {
                     .append(" ").append(f.summary()).append(" costs=").append(java.util.Arrays.toString(f.costs))
                     .append(" ms=").append(android.os.SystemClock.elapsedRealtime() - start).append('\n');
                 result.putString("details", log.toString());
-                if (i == 0 && f.shopOpen) throw new AssertionError("收起商店误判");
-                if (i > 0 && (!f.shopOpen || !f.readable || f.gold != (i == 1 ? 74 : 73))) throw new AssertionError("商店或金币识别失败");
-                if (i == 1 && (!"可酷伯".equals(f.names[0]) || f.costs[0] != 1)) throw new AssertionError("目标识别失败");
-                if (i == 2 && !"".equals(f.names[0])) throw new AssertionError("空位识别失败");
+                if (i == 0 && f.shopOpen) failures.append("收起商店误判；");
+                if (i > 0 && (!f.shopOpen || !f.readable || f.gold != (i == 1 ? 74 : i == 2 ? 73 : 31)))
+                    failures.append(i).append("商店或金币识别失败：").append(f.problem).append('；');
+                if (i == 1 && (!"可酷伯".equals(f.names[0]) || f.costs[0] != 1)) failures.append("目标识别失败；");
+                if (i == 2 && !"".equals(f.names[0])) failures.append("空位识别失败；");
+                if (i == 3 && !java.util.Arrays.equals(f.names, new String[]{"卡蜜尔", "凯特琳", "沃里克", "阿利斯塔", "远古石甲虫"}))
+                    failures.append("现场卡名不匹配；");
+                int[][] expectedCosts = {{}, {1,1,1,1,2}, {0,1,1,1,2}, {1,2,2,2,3}};
+                if (i > 0 && !java.util.Arrays.equals(f.costs, expectedCosts[i])) failures.append(i).append("费用不匹配；");
             }
+            if (failures.length() > 0) throw new AssertionError(failures.toString());
             result.putString("result", "PASS"); finish(-1, result);
         } catch (Throwable e) { result.putString("error", e.toString()); finish(0, result); }
     }

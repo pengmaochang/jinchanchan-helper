@@ -10,6 +10,7 @@ public final class BuyPolicy {
         public int gold = -1;
         public final String[] names = new String[5];
         public final int[] costs = new int[5];
+        public String problem = "";
         public String summary() { return Arrays.toString(names) + " · 金币 " + gold; }
     }
     public static final class Decision {
@@ -36,9 +37,12 @@ public final class BuyPolicy {
             opened ? "商店已关闭，已停止" : "等待手动展开商店");
         opened = true;
         if (!frame.readable || frame.gold < 0)
-            return decision(++uncertain >= 3 ? Kind.STOP : Kind.WAIT, -1, "卡名或金币识别不清，等待重读");
+            return decision(++uncertain >= 3 ? Kind.STOP : Kind.WAIT, -1,
+                (frame.problem.isEmpty() ? "卡名或金币识别不清" : frame.problem) + "，" + (uncertain >= 3 ? "已暂停" : "等待重读"));
         uncertain = 0;
         if (pending != null) {
+            if (pending.kind == Kind.REFRESH && java.util.Arrays.stream(frame.names).allMatch(name -> "".equals(name)))
+                return decision(++misses >= 3 ? Kind.STOP : Kind.WAIT, -1, "刷新后卡牌尚未出现，等待画面稳定");
             boolean confirmed = frame.gold == previousGold - pendingCost &&
                 (pending.kind == Kind.REFRESH || "".equals(frame.names[pending.slot]));
             if (!confirmed) return decision(++misses >= 3 ? Kind.STOP : Kind.WAIT, -1,

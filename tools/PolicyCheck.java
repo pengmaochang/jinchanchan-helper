@@ -22,6 +22,7 @@ public class PolicyCheck {
         check(p.bought == 2 && d.slot == 0, "Next priority"); p.sent(d, f);
         f = frame(71); d = p.decide(f);
         check(p.bought == 3 && d.kind == REFRESH, "Refresh only when targets absent"); p.sent(d, f);
+        check(p.decide(frame(69)).kind == WAIT && p.refreshed == 0, "Never refresh again while new cards are loading");
         f = frame(69, "洛");
         check(p.decide(f).kind == REFRESH && p.refreshed == 1, "Confirm refresh spend");
         f.shopOpen = false;
