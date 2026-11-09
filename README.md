@@ -84,11 +84,15 @@
 
 ## 界面预览
 
-以下为 v0.9.5 实机截图，悬浮面板截图中的自动拿卡、自动刷新均处于关闭状态。
+以下为 **v0.10.0 测试版 / 小米 14 实机截图**。阵容详情展示了导入后的本地阵容图与英雄购买名单；悬浮面板中自动拿卡关闭、自动刷新开启，刷新留金为 0，仅用于展示当前设置，不代表默认值。
 
-| 首页与卡组 | 运行设置 | 悬浮控制面板 |
-| --- | --- | --- |
-| <img src="docs/screenshots/main.png" alt="首页、卡组搜索与带头像的已选棋子" width="280"> | <img src="docs/screenshots/settings.png" alt="自动刷新、保留金币和仅识别设置" width="280"> | <img src="docs/screenshots/overlay.png" alt="悬浮面板的卡组选择、开关、刷新留金与关闭按钮" width="280"> |
+| 阵容码管理首页 | 阵容预览与英雄名单 |
+| --- | --- |
+| <img src="docs/screenshots/main.png" alt="v0.10.0 首页：批量添加阵容码、自动提取名称与本地预览" width="320"> | <img src="docs/screenshots/lineup.png" alt="v0.10.0 阵容详情：紧凑阵容图、复制与导入按钮、可编辑英雄名单" width="320"> |
+
+| 运行偏好 | 悬浮阵容选择与控制 |
+| --- | --- |
+| <img src="docs/screenshots/settings.png" alt="v0.10.0 运行偏好：自动刷新、保留金币与仅识别设置" width="320"> | <img src="docs/screenshots/overlay.png" alt="v0.10.0 悬浮面板：当前阵容名、自动拿卡与刷新开关、留金输入和关闭按钮" width="320"> |
 
 ## 功能
 
