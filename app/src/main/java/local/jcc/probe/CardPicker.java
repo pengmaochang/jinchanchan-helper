@@ -80,14 +80,27 @@ final class CardPicker extends LinearLayout {
         for (int i = 0; i < selected.size(); i++) {
             String name = selected.get(i); Card card = null;
             for (Card c : catalog) if (c.name.equals(name)) { card = c; break; }
-            LinearLayout chip = new LinearLayout(getContext()); chip.setGravity(Gravity.CENTER_VERTICAL);
-            chip.setPadding(dp(6), 0, 0, 0); chip.setBackground(shape(0xff333346, 10));
-            if (card != null) addPortrait(chip, card, 28);
-            TextView label = text(name, 12, GOLD); label.setPadding(dp(7), 0, dp(2), 0); label.setTypeface(null, Typeface.BOLD);
-            chip.addView(label);
-            TextView remove = text("×", 21, MUTED); remove.setGravity(Gravity.CENTER); remove.setContentDescription("移除" + name);
-            remove.setOnClickListener(v -> { selected.remove(name); renderChips(); showResults(); }); chip.addView(remove, new LayoutParams(dp(40), dp(44)));
-            chips.addView(chip, new ViewGroup.LayoutParams(-2, dp(44)));
+            FrameLayout chip = new FrameLayout(getContext()); chip.setBackground(shape(0xff333346, 10));
+            LinearLayout portrait = new LinearLayout(getContext()); portrait.setGravity(Gravity.CENTER);
+            if (card != null) addPortrait(portrait, card, 40);
+            else { TextView fallback=text(name.substring(0,1),22,GOLD);fallback.setGravity(Gravity.CENTER);portrait.addView(fallback,new LayoutParams(dp(40),dp(40))); }
+            FrameLayout.LayoutParams portraitParams=new FrameLayout.LayoutParams(dp(40),dp(40),Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+            portraitParams.topMargin=dp(8);chip.addView(portrait,portraitParams);
+            TextView label = text(name, 12, GOLD); label.setGravity(Gravity.CENTER); label.setSingleLine(true);label.setTypeface(null, Typeface.BOLD);
+            label.setAutoSizeTextTypeUniformWithConfiguration(8,12,1,android.util.TypedValue.COMPLEX_UNIT_SP);
+            label.setPadding(dp(3),0,dp(3),0);label.setIncludeFontPadding(false);
+            FrameLayout.LayoutParams labelParams=new FrameLayout.LayoutParams(-1,dp(23),Gravity.BOTTOM);
+            labelParams.bottomMargin=dp(3);chip.addView(label,labelParams);
+            FrameLayout remove = new FrameLayout(getContext()); remove.setContentDescription("移除" + name);
+            remove.setFocusable(true);
+            remove.setBackground(new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(0x33ffffff), null, shape(0xffffffff, 14)));
+            TextView badge = text("×", 16, 0xcce8edf5); badge.setGravity(Gravity.CENTER); badge.setIncludeFontPadding(false);
+            badge.setBackground(shape(0x99202a3b, 9)); badge.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            FrameLayout.LayoutParams badgeParams = new FrameLayout.LayoutParams(dp(18), dp(18), Gravity.TOP | Gravity.RIGHT);
+            badgeParams.topMargin=dp(3); badgeParams.rightMargin=dp(3); remove.addView(badge, badgeParams);
+            remove.setOnClickListener(v -> { selected.remove(name); renderChips(); showResults(); });
+            chip.addView(remove, new FrameLayout.LayoutParams(dp(28), dp(28), Gravity.TOP | Gravity.RIGHT));
+            chips.addView(chip, new ViewGroup.LayoutParams(dp(68), dp(74)));
         }
     }
     private void addPortrait(LinearLayout parent, Card card, int size) {
@@ -107,7 +120,7 @@ final class CardPicker extends LinearLayout {
         @Override protected void onMeasure(int ws, int hs) {
             int width = MeasureSpec.getSize(ws), x = 0, y = 0, height = 0, gap = dp(6);
             for (int i = 0; i < getChildCount(); i++) {
-                View child = getChildAt(i); child.measure(MeasureSpec.makeMeasureSpec(width, MeasureSpec.AT_MOST), MeasureSpec.makeMeasureSpec(dp(44), MeasureSpec.EXACTLY));
+                View child = getChildAt(i); child.measure(MeasureSpec.makeMeasureSpec(dp(68), MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(dp(74), MeasureSpec.EXACTLY));
                 if (x > 0 && x + child.getMeasuredWidth() > width) { x = 0; y += height + gap; height = 0; }
                 x += child.getMeasuredWidth() + gap; height = Math.max(height, child.getMeasuredHeight());
             }
