@@ -126,3 +126,11 @@ $probeJdk = (Get-ChildItem .tools/jdk17 -Directory | Select-Object -First 1).Ful
 ## 仓库与本地文件
 
 公开仓库只上传代码、目录/头像、模板、文档和经过选择的说明截图。`.tools/`、`.gradle/`、构建目录、`dist/`、`captures/` 与 `local.properties` 被忽略。签名文件放在 `.tools/probe-debug.jks`；不要将真实私钥改为受版本控制的文件。
+
+## 阵容码导入测试（v0.10.0）
+
+`LineupCodeCheck` 验证名称提取、批量去重、非法输入及长标题单字 OCR 容错；`LineupFlowCheck` 验证商店收起、替换第三套、应用状态确认和旧界面等待。`PortraitCheck` 接收本地原图路径和可选行号 0/2，用随包头像验证对应行识别。
+
+Android `LineupChecks` 使用应用 private files 中的 `lineup-fixture-list.jpg`、`lineup-fixture-replace.jpg`、`lineup-fixture-applied.jpg`、`lineup-fixture-board.jpg`，回放用户提供的四张原始截图；原图不公开打包。检查第三套按钮、第三行头像、第一套取消按钮不能干扰第三套、同名第一/第三套选择、紧凑截图和收藏成功遮挡。它不派发游戏手势，存储检查只用隔离的 `lineup_checks_only` 设置。
+
+导入保存的预览位于应用 private `files/lineups/`，新版本使用 `-row3.png` 后缀，旧的首行预览在下一次明确导入时更新。`LineupImporter`、`LineupFlow`、`LineupVision` 管理独立流程，复用同一个手势互斥门；普通购买循环在导入活动期间不运行。

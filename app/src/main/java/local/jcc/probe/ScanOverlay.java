@@ -100,7 +100,7 @@ final class ScanOverlay {
         panel.addView(close, closeParams);
         assistSwitch.setOnCheckedChangeListener((button, checked) -> {
             if (syncing) return;
-            if (checked) service.startScanning(); else service.stopScanning("已手动暂停");
+            if (checked) { service.startScanning(); if(service.isImporting())collapse(); } else service.stopScanning("已手动暂停");
         });
         refreshSwitch.setOnCheckedChangeListener((button, checked) -> { if (!syncing) service.setAutoRefresh(checked); });
         params = new WindowManager.LayoutParams(dp(44), dp(44), WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
@@ -221,7 +221,7 @@ final class ScanOverlay {
             final boolean[] chosen = {false};
             for (int i = 0; i < decks.size(); i++) menu.getMenu().add(0, i, i, decks.get(i).name)
                 .setCheckable(true).setChecked(decks.get(i).id.equals(active));
-            menu.setOnMenuItemClickListener(item -> { chosen[0] = true; service.selectDeck(decks.get(item.getItemId()).id); return true; });
+            menu.setOnMenuItemClickListener(item -> { chosen[0] = true; DeckStore.Deck selected=decks.get(item.getItemId());service.selectDeckFromOverlay(selected.id);if(selected.isCode())collapse();return true; });
             menu.setOnDismissListener(m -> { deckMenu = null; if (!chosen[0]) collapse(); });
             menu.show();
         } catch (RuntimeException e) {
@@ -272,7 +272,7 @@ final class ScanOverlay {
             paint.setColor(running ? Color.rgb(56, 191, 148) : Color.rgb(99, 114, 136));
             canvas.drawRoundRect(cx - dp(10), getHeight() - dp(14), cx + dp(10), getHeight() - dp(1), dp(6), dp(6), paint);
             paint.setColor(Color.WHITE); paint.setTextSize(dp(9));
-            canvas.drawText(running ? "开" : "停", cx, getHeight() - dp(4), paint);
+            canvas.drawText(service.isImporting() ? "导" : running ? "开" : "停", cx, getHeight() - dp(4), paint);
         }
     }
 }

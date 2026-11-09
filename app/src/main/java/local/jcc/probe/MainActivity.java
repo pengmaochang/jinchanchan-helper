@@ -19,7 +19,11 @@ public class MainActivity extends Activity {
     private static final int BG = 0xff10141d, CARD = 0xff1b2230, FIELD = 0xff121923, INK = 0xffedf0f5, MUTED = 0xff9ba8bd, GOLD = 0xffe8c478;
     private EditText goldReserve;
     private CardPicker targetCards;
-    private EditText deckNameInput;
+    private EditText deckNameInput, lineupCodes;
+    private TextView codeSummary;
+    private ImageView lineupPreview;
+    private Button copyLineup, importLineup, confirmLineup;
+    private String loadedTargets="", loadedPreview="";
     private Spinner deckSpinner;
     private DeckStore deckStore;
     private java.util.List<DeckStore.Deck> savedDecks;
@@ -60,16 +64,61 @@ public class MainActivity extends Activity {
         settings.setOnClickListener(v -> startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
         addButton(connection, settings);
 
-        LinearLayout decks = card(layout, "我的卡组", "搜索并添加棋子，展示顺序就是购买优先级。");
+        LinearLayout codeCard = card(layout, "阵容码管理", "粘贴完整阵容码，可一次添加多套；名称会自动提取。");
+        lineupCodes = input("【阵容码】#阵容名称#代码");
+        lineupCodes.setMinLines(2); lineupCodes.setMaxLines(5); lineupCodes.setGravity(Gravity.TOP);
+        lineupCodes.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE);
+        String shared = getIntent().getStringExtra(Intent.EXTRA_TEXT); if (shared != null) lineupCodes.setText(shared);
+        codeCard.addView(lineupCodes);
+        Button addCodes = button("添加 / 更新阵容码", true);
+        addCodes.setOnClickListener(v -> {
+            try {
+                java.util.List<DeckStore.Deck> added = deckStore.addCodes(lineupCodes.getText().toString());
+                DeckStore.Deck last = added.get(added.size()-1); reloadDeckChoices(last.id);
+                if (CaptureService.instance != null) CaptureService.instance.selectDeck(last.id);
+                lineupCodes.setText(""); Toast.makeText(this, "已添加或更新 " + added.size() + " 套阵容", Toast.LENGTH_LONG).show();
+            } catch (RuntimeException e) { Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show(); }
+        }); addButton(codeCard, addCodes);
+
+        LinearLayout decks = card(layout, "我的阵容", "选中阵容码后，可在悬浮窗自动导入游戏并识别英雄。");
         deckSpinner = new Spinner(this, Spinner.MODE_DROPDOWN);
         deckSpinner.setBackground(shape(FIELD, 10));
         decks.addView(deckSpinner, new LinearLayout.LayoutParams(-1, dp(48)));
+        codeSummary = label("", 12, GOLD); space(decks, 8); decks.addView(codeSummary);
+        lineupPreview = new ImageView(this); lineupPreview.setAdjustViewBounds(true); lineupPreview.setVisibility(View.GONE);
+        lineupPreview.setPadding(0,dp(10),0,dp(6)); decks.addView(lineupPreview);
+        lineupPreview.setOnClickListener(v -> showLineupPreview());
+        LinearLayout codeActions = row(); copyLineup = button("复制阵容码", false); importLineup = button("在游戏中导入", false);
+        weightedButton(codeActions, copyLineup); weightedButton(codeActions, importLineup); space(decks, 6); decks.addView(codeActions);
+        copyLineup.setOnClickListener(v -> {
+            DeckStore.Deck d = editingDeck(); if (d == null || !d.isCode()) return;
+            ((android.content.ClipboardManager)getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(android.content.ClipData.newPlainText(d.name,d.code));
+            Toast.makeText(this,"阵容码已复制",Toast.LENGTH_SHORT).show();
+        });
+        importLineup.setOnClickListener(v -> {
+            try {
+                DeckStore.Deck d = persistDeck();
+                if (CaptureService.instance == null) { Toast.makeText(this,"请先开启无障碍服务",Toast.LENGTH_LONG).show(); return; }
+                CaptureService.instance.requestLineupImport(d.id); CaptureService.instance.showOverlay();
+                Toast.makeText(this,"请切回游戏；商店展开时会先收起，再导入第三套收藏并应用",Toast.LENGTH_LONG).show();
+            } catch (RuntimeException e) { Toast.makeText(this,e.getMessage(),Toast.LENGTH_LONG).show(); }
+        });
         space(decks, 14); decks.addView(label("卡组名称", 12, MUTED)); space(decks, 6);
         deckNameInput = input("给这套卡组起个名字"); deckNameInput.setSingleLine(true); decks.addView(deckNameInput);
         space(decks, 14); decks.addView(label("优先购买", 12, MUTED)); space(decks, 6);
         targetCards = new CardPicker(this);
         targetCards.setValue(getSharedPreferences("probe", MODE_PRIVATE).getString("targets", "可酷伯"));
         decks.addView(targetCards); space(decks, 10);
+        confirmLineup = button("保存并确认英雄名单", false);
+        confirmLineup.setOnClickListener(v -> {
+            try {
+                DeckStore.Deck d = persistDeck(); if (!d.isCode()) return;
+                if (targetCards.value().isEmpty()) throw new IllegalArgumentException("请先添加英雄");
+                d = deckStore.saveDerived(d.id,targetCards.value(),d.preview,true,""); reloadDeckChoices(d.id);
+                if (CaptureService.instance != null) CaptureService.instance.selectDeck(d.id);
+                Toast.makeText(this,"已确认，可开启自动拿卡",Toast.LENGTH_SHORT).show();
+            } catch (RuntimeException e) { Toast.makeText(this,e.getMessage(),Toast.LENGTH_LONG).show(); }
+        }); addButton(decks, confirmLineup);
         LinearLayout deckButtons = row();
         Button newDeck = button("新建", false);
         newDeck.setOnClickListener(v -> { deckSpinner.setSelection(0); newDeckEditor(); });
@@ -145,7 +194,7 @@ public class MainActivity extends Activity {
             update();
         }); addButton(diagnostics, capture);
         Button preview = button("查看最近截图", false); preview.setOnClickListener(v -> showPreview()); addButton(diagnostics, preview);
-        TextView version = label("v0.9.5  ·  小米 14  ·  本地离线识别", 11, MUTED);
+        TextView version = label("v0.10.0  ·  小米 14  ·  本地离线识别", 11, MUTED);
         version.setGravity(Gravity.CENTER); space(layout, 22); layout.addView(version);
 
         FrameLayout centered = new FrameLayout(this);
@@ -221,11 +270,33 @@ public class MainActivity extends Activity {
         new android.app.AlertDialog.Builder(this).setTitle("最近一次截图").setView(image)
             .setPositiveButton("关闭", (d, w) -> {}).setOnDismissListener(d -> bitmap.recycle()).show();
     }
+    private DeckStore.Deck editingDeck() {
+        if (deckStore != null && editingDeckId != null) for (DeckStore.Deck d : deckStore.all()) if (d.id.equals(editingDeckId)) return d;
+        return null;
+    }
+    private void updateLineupView(DeckStore.Deck deck) {
+        if (codeSummary == null) return;
+        boolean code=deck!=null&&deck.isCode();copyLineup.setEnabled(code);importLineup.setEnabled(code);
+        if (confirmLineup!=null) confirmLineup.setVisibility(code?View.VISIBLE:View.GONE);
+        codeSummary.setText(!code?"手动卡组":deck.verified?"阵容码 · 英雄已确认":"阵容码 · "+(deck.note.isEmpty()?"首次导入后识别英雄":deck.note));
+        lineupPreview.setImageDrawable(null);lineupPreview.setVisibility(View.GONE);
+        if (code&&!deck.preview.isEmpty()) {
+            File image=new File(getFilesDir(),deck.preview); android.graphics.BitmapFactory.Options opts=new android.graphics.BitmapFactory.Options();opts.inSampleSize=2;
+            android.graphics.Bitmap bitmap=android.graphics.BitmapFactory.decodeFile(image.getAbsolutePath(),opts);
+            if (bitmap!=null){lineupPreview.setImageBitmap(bitmap);lineupPreview.setVisibility(View.VISIBLE);}
+        }
+    }
+    private void showLineupPreview() {
+        DeckStore.Deck deck=editingDeck();if(deck==null||deck.preview.isEmpty())return;
+        android.graphics.Bitmap bitmap=android.graphics.BitmapFactory.decodeFile(new File(getFilesDir(),deck.preview).getAbsolutePath());if(bitmap==null)return;
+        ImageView image=new ImageView(this);image.setImageBitmap(bitmap);image.setAdjustViewBounds(true);
+        new android.app.AlertDialog.Builder(this).setTitle(deck.name).setView(image).setPositiveButton("关闭",null).setOnDismissListener(d->bitmap.recycle()).show();
+    }
     private void newDeckEditor() {
-        editingDeckId = null; deckNameInput.setText(""); targetCards.setValue(""); deckNameInput.requestFocus();
+        editingDeckId = null; deckNameInput.setText(""); targetCards.setValue(""); loadedTargets="";loadedPreview="";updateLineupView(null);deckNameInput.requestFocus();
     }
     private void loadDeckEditor(DeckStore.Deck deck) {
-        editingDeckId = deck.id; deckNameInput.setText(deck.name); targetCards.setValue(deck.targets);
+        editingDeckId = deck.id; deckNameInput.setText(deck.name); targetCards.setValue(deck.targets);loadedTargets=deck.targets;loadedPreview=deck.preview;updateLineupView(deck);
     }
     private void reloadDeckChoices(String selected) {
         savedDecks = deckStore.all();
@@ -268,7 +339,7 @@ public class MainActivity extends Activity {
     private boolean saveSettings() {
         try {
             java.util.List<String> targets = BuyPolicy.parseTargets(targetCards.value());
-            if (targets.isEmpty()) throw new IllegalArgumentException("请填写至少一个目标卡名");
+            if (targets.isEmpty() && (editingDeck() == null || !editingDeck().isCode())) throw new IllegalArgumentException("请填写至少一个目标卡名");
             int reserve = Integer.parseInt(goldReserve.getText().toString().trim());
             if (reserve < 0 || reserve > 999) throw new IllegalArgumentException("保留金币应为 0～999");
             persistDeck();
@@ -288,7 +359,11 @@ public class MainActivity extends Activity {
     }
     @Override protected void onResume() {
         super.onResume();
-        if (deckStore != null && editingDeckId != null && !deckStore.current().id.equals(editingDeckId)) reloadDeckChoices(deckStore.current().id);
+        if (deckStore != null && editingDeckId != null) {
+            DeckStore.Deck current=deckStore.current();
+            if (!current.id.equals(editingDeckId) || !current.targets.equals(loadedTargets) || !current.preview.equals(loadedPreview)) reloadDeckChoices(current.id);
+            else updateLineupView(current);
+        }
         if (goldReserve != null) goldReserve.setText(String.valueOf(getSharedPreferences("probe", MODE_PRIVATE).getInt("reserve", GoldReserve.DEFAULT)));
         if (autoRefresh != null) autoRefresh.setChecked(getSharedPreferences("probe", MODE_PRIVATE).getBoolean("autoRefresh", false));
         handler.post(refresh);

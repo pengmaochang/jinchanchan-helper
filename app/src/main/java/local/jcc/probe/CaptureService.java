@@ -45,6 +45,7 @@ public class CaptureService extends AccessibilityService {
     private String foreground = "";
     private ScanOverlay overlay;
     private ShopOcr recognizer;
+    private LineupImporter lineupImporter;
     private BuyPolicy policy;
     private boolean previewOnly;
     private long lastScreenshot;
@@ -58,7 +59,7 @@ public class CaptureService extends AccessibilityService {
     @Override protected void onServiceConnected() {
         instance = this;
         if (trace == null) trace = new AssistTrace(this);
-        record("service connected version=" + "0.9.5");
+        record("service connected version=" + "0.10.0");
         handler.removeCallbacks(health); handler.postDelayed(health, 1000);
         status("服务已连接。可显示悬浮窗进行商店识别。");
     }
@@ -77,7 +78,7 @@ public class CaptureService extends AccessibilityService {
         if (scanning && !isGamePackage(pkg) && !pkg.equals("com.android.systemui") && !isGameForeground())
             waitForGame("已开启 · 等待返回游戏");
     }
-    @Override public void onInterrupt() { stopScanning("无障碍服务被中断"); }
+    @Override public void onInterrupt() { cancelLineup();stopScanning("无障碍服务被中断"); }
     @Override public void onConfigurationChanged(android.content.res.Configuration config) {
         super.onConfigurationChanged(config);
         if (scanning) waitForGame("已开启 · 等待游戏横屏");
@@ -90,7 +91,7 @@ public class CaptureService extends AccessibilityService {
             status("点击开启后，商店打开就自动识别购买");
         } catch (RuntimeException e) { status("显示悬浮窗失败：" + e.getMessage()); }
     }
-    void hideOverlay() { stopScanning("悬浮窗已关闭"); if (overlay != null) { overlay.remove(); overlay = null; } }
+    void hideOverlay() { cancelLineup(); stopScanning("悬浮窗已关闭"); if (overlay != null) { overlay.remove(); overlay = null; } }
     void setAutoRefresh(boolean enabled) {
         getSharedPreferences("probe", MODE_PRIVATE).edit().putBoolean("autoRefresh", enabled).apply();
         if (policy != null) policy.setAutoRefresh(enabled);
@@ -107,12 +108,17 @@ public class CaptureService extends AccessibilityService {
     }
     void startScanning() {
         if (scanning) return;
+        if (isImporting()) { scanning=true;previewOnly=getSharedPreferences("probe",MODE_PRIVATE).getBoolean("previewOnly",false);status("阵容导入完成后自动拿卡");return; }
         android.content.SharedPreferences prefs = getSharedPreferences("probe", MODE_PRIVATE);
         try {
             DeckStore.Deck deck = new DeckStore(this).current();
             deckName = deck.name;
             targets = BuyPolicy.parseTargets(deck.targets);
-            if (targets.isEmpty()) throw new IllegalArgumentException("请先填写目标名字");
+            if (targets.isEmpty() || deck.isCode()&&!deck.verified) {
+                if (!deck.isCode()) throw new IllegalArgumentException("请先填写目标名字");
+                if (deck.preview.isEmpty()) { scanning=true;previewOnly=prefs.getBoolean("previewOnly",false);requestLineupImport(deck.id);return; }
+                status("请先核对并确认此阵容的英雄名单");return;
+            }
             policy = new BuyPolicy(targets, prefs.getInt("reserve", GoldReserve.DEFAULT), prefs.getBoolean("autoRefresh", false));
         } catch (IllegalArgumentException e) { status(e.getMessage()); return; }
         previewOnly = prefs.getBoolean("previewOnly", false);
@@ -125,15 +131,88 @@ public class CaptureService extends AccessibilityService {
     }
     String currentDeckName() { return new DeckStore(this).current().name; }
     void selectDeck(String id) {
+        cancelLineup();
         DeckStore.Deck deck = new DeckStore(this).select(id);
         deckName = deck.name;
         targets = BuyPolicy.parseTargets(deck.targets);
         android.content.SharedPreferences prefs = getSharedPreferences("probe", MODE_PRIVATE);
         generation++;
         handler.removeCallbacks(scanNext);
-        policy = new BuyPolicy(targets, prefs.getInt("reserve", GoldReserve.DEFAULT), prefs.getBoolean("autoRefresh", false));
-        status("当前卡组：" + deckName);
+        policy = targets.isEmpty() || deck.isCode()&&!deck.verified ? null : new BuyPolicy(targets, prefs.getInt("reserve", GoldReserve.DEFAULT), prefs.getBoolean("autoRefresh", false));
+        status("当前阵容：" + deckName);
         if (scanning && !choosingDeck) handler.post(scanNext);
+    }
+    boolean isImporting() { return lineupImporter != null && lineupImporter.active(); }
+    void selectDeckFromOverlay(String id) {
+        cancelLineup(); selectDeck(id);
+        DeckStore.Deck deck = new DeckStore(this).current();
+        if (deck.isCode()) requestLineupImport(id);
+    }
+    void requestLineupImport(String id) {
+        cancelLineup(); selectDeck(id);generation++;handler.removeCallbacks(scanNext);
+        DeckStore.Deck deck = new DeckStore(this).current();
+        if (!deck.isCode()) { status("此阵容没有阵容码"); return; }
+        lineupImporter = new LineupImporter(this,deck);lineupImporter.begin();
+    }
+    private void cancelLineup() { if (lineupImporter != null) { lineupImporter.cancel();lineupImporter=null; } }
+    boolean importAllowed() { return !choosingDeck && actionGate.delay(SystemClock.elapsedRealtime())==0 && isGameForeground(); }
+    void importStatus(String text) { if(!text.equals(lastStatus))record("lineup "+text);status(text); }
+    void scheduleLineup(Runnable task,long delay) { handler.postDelayed(task,delay); }
+    void removeLineup(Runnable task) { handler.removeCallbacks(task); }
+    void runLineupWork(Runnable task) { if (!worker.isShutdown()) worker.execute(task); }
+    BuyPolicy.Frame readShopForLineup(Bitmap image) { if (recognizer==null) recognizer=new ShopOcr(this);return recognizer.analyze(image); }
+    void lineupFinished(LineupImporter owner,boolean success,String message) {
+        if (lineupImporter!=owner) return;lineupImporter=null;
+        DeckStore.Deck deck=new DeckStore(this).current();targets=BuyPolicy.parseTargets(deck.targets);
+        android.content.SharedPreferences prefs=getSharedPreferences("probe",MODE_PRIVATE);
+        policy=targets.isEmpty()||deck.isCode()&&!deck.verified?null:new BuyPolicy(targets,prefs.getInt("reserve",GoldReserve.DEFAULT),prefs.getBoolean("autoRefresh",false));
+        if (!success || policy==null) scanning=false;
+        status(message);android.widget.Toast.makeText(this,message,android.widget.Toast.LENGTH_LONG).show();
+        if(scanning&&!choosingDeck)handler.post(scanNext);
+    }
+    boolean captureForLineup(java.util.function.Function<Bitmap,LineupVision.Screen> reader,
+        java.util.function.BiConsumer<LineupVision.Screen,Throwable> done) {
+        if (busy || !importAllowed() || SystemClock.elapsedRealtime()-lastScreenshot<screenshotIntervalMs) return false;
+        busy=true;lastScreenshot=SystemClock.elapsedRealtime();final long request=++captureRequest;final long started=lastScreenshot;phase("lineupScreenshot");
+        Runnable timeout=()->{if(request!=captureRequest||!busy)return;captureRequest++;busy=false;done.accept(null,new IOException("阵容截图回调超时"));};
+        handler.postDelayed(timeout,1600);
+        try { takeScreenshot(Display.DEFAULT_DISPLAY,getMainExecutor(),new TakeScreenshotCallback(){
+            @Override public void onSuccess(ScreenshotResult result){
+                handler.removeCallbacks(timeout);if(request!=captureRequest){result.getHardwareBuffer().close();return;}
+                Bitmap hardware=null,image=null;
+                try(HardwareBuffer buffer=result.getHardwareBuffer()) {
+                    hardware=Bitmap.wrapHardwareBuffer(buffer,result.getColorSpace());if(hardware==null)throw new IOException("截图为空");
+                    image=hardware.copy(Bitmap.Config.ARGB_8888,false);if(image==null)throw new IOException("截图复制失败");
+                    final Bitmap captured=image;image=null;
+                    worker.execute(()->{LineupVision.Screen screen=null;Throwable failure=null;
+                        try {phase("lineupOCR");screen=reader.apply(captured);}catch(Throwable e){failure=e;}finally{captured.recycle();}
+                        final LineupVision.Screen answer=screen;final Throwable error=failure;
+                        handler.post(()->{busy=false;phase("idle");
+                            if(error==null && SystemClock.elapsedRealtime()-started>1600){if(answer!=null&&answer.preview!=null)answer.preview.recycle();done.accept(null,new IOException("阵容识别结果过旧，等待新画面"));}
+                            else { if(answer!=null)record("lineup_screen ms="+(SystemClock.elapsedRealtime()-started)+" menu="+answer.menu+" replacement="+answer.replacement+" shop="+answer.shopOpen+" board="+answer.board+" title="+answer.targetMatches+" applied="+answer.targetApplied);done.accept(answer,error); }
+                        });
+                    });
+                }catch(Exception e){if(image!=null)image.recycle();busy=false;done.accept(null,e);}finally{if(hardware!=null)hardware.recycle();}
+            }
+            @Override public void onFailure(int code){handler.removeCallbacks(timeout);if(request!=captureRequest)return;busy=false;done.accept(null,new IOException("截图错误 "+code));}
+        }); }catch(Exception e){handler.removeCallbacks(timeout);busy=false;done.accept(null,e);}
+        return true;
+    }
+    boolean tapForLineup(android.graphics.Point point,LineupImporter owner,Runnable completed) {
+        if (lineupImporter!=owner||!owner.active()||!importAllowed())return false;
+        if (overlay!=null&&overlay.blocksPoint(point.x,point.y)) { overlay.dockBelowShop();return false; }
+        final long gestureId=actionGate.begin(BuyPolicy.Kind.BUY,SystemClock.elapsedRealtime());generation++;handler.removeCallbacks(scanNext);
+        record("lineup_tap id="+gestureId+" point="+point.x+","+point.y);phase("lineupGesture");
+        android.graphics.Path path=new android.graphics.Path();path.moveTo(point.x,point.y);
+        android.accessibilityservice.GestureDescription gesture=new android.accessibilityservice.GestureDescription.Builder()
+            .addStroke(new android.accessibilityservice.GestureDescription.StrokeDescription(path,0,40)).build();
+        final boolean[] finished={false};Runnable timeout=()->{if(finished[0])return;finished[0]=true;actionGate.finish(gestureId,SystemClock.elapsedRealtime());owner.fail("阵容按钮点击回调超时，已停止导入");};
+        handler.postDelayed(timeout,1800);
+        try {boolean accepted=dispatchGesture(gesture,new GestureResultCallback(){
+            @Override public void onCompleted(android.accessibilityservice.GestureDescription g){handler.removeCallbacks(timeout);if(finished[0])return;finished[0]=true;actionGate.finish(gestureId,SystemClock.elapsedRealtime());if(owner.active())completed.run();}
+            @Override public void onCancelled(android.accessibilityservice.GestureDescription g){handler.removeCallbacks(timeout);if(finished[0])return;finished[0]=true;actionGate.finish(gestureId,SystemClock.elapsedRealtime());owner.fail("阵容按钮点击被取消，已停止导入");}
+        },handler);if(!accepted){handler.removeCallbacks(timeout);finished[0]=true;actionGate.finish(gestureId,SystemClock.elapsedRealtime());return false;}return true;
+        }catch(RuntimeException e){handler.removeCallbacks(timeout);finished[0]=true;actionGate.finish(gestureId,SystemClock.elapsedRealtime());return false;}
     }
     void beginDeckSelection() {
         choosingDeck = true; generation++;
@@ -184,12 +263,14 @@ public class CaptureService extends AccessibilityService {
         return false;
     }
     void stopScanning(String reason) {
+        if (reason.contains("手动暂停")) cancelLineup();
         scanning = false; generation++;
         handler.removeCallbacks(scanNext);
         status(reason);
     }
     private void scan() {
-        if (!scanning || choosingDeck) return;
+        if (!scanning || choosingDeck || isImporting()) return;
+        if (policy == null) { retryFrame("请先导入阵容码并核对英雄名单"); return; }
         long actionDelay = actionGate.delay(SystemClock.elapsedRealtime());
         if (actionDelay < 0) return;
         if (actionDelay > 0) { handler.removeCallbacks(scanNext); handler.postDelayed(scanNext, actionDelay); return; }
@@ -472,7 +553,7 @@ public class CaptureService extends AccessibilityService {
         } finally { image.recycle(); handler.post(() -> busy = false); }
     }
     @Override public void onDestroy() {
-        scanning = false; generation++;
+        scanning = false; generation++;cancelLineup();
         handler.removeCallbacks(scanNext);
         if (overlay != null) { overlay.remove(); overlay = null; }
         handler.removeCallbacks(capture); handler.removeCallbacks(health);

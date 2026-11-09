@@ -24,3 +24,7 @@ Portable development tools are kept outside Git under `.tools/`: Gradle 8.9 (Apa
 `app/src/main/assets/champions_s18.json` was retrieved on 2026-11-09 from the public endpoint https://www.dataj.cc/api/web/gamedata?setId=18 used by https://www.dataj.cc/explorer. It keeps unique visible, non-special (`heroType=0`) entries with prices 1–5, including shop-related creature variants exposed by the source; duplicate names are collapsed. The upstream `season` text is inconsistent with `setId`; the request parameter and page selector identify this as set 18. No claim of official completeness is made.
 
 Portraits in `assets/portraits/` come from each record's `picture` URL on `img.dataj.cc` and are bundled for offline search. Underlying game art remains owned by its respective rights holders.
+
+## Formation UI anchor
+
+`assets/templates/lineup-button.bin` is a 432-byte RGB descriptor extracted from the center of the in-game formation button in a user-provided reference screenshot. It contains the button artwork only, not the full screenshot, player names or account details. Formation preview images and full fixture screenshots remain local and are not bundled into the public repository.
