@@ -42,7 +42,7 @@ final class CardPicker extends LinearLayout {
         results = new LinearLayout(context); results.setOrientation(VERTICAL); results.setVisibility(GONE);
         results.setBackground(shape(0xff222d3e, 10));
         LayoutParams rp = new LayoutParams(-1, -2); rp.topMargin = dp(6); addView(results, rp);
-        TextView hint = text("已选棋子 · 从左到右优先购买", 11, MUTED);
+        TextView hint = text("已选棋子 · 识别到就购买", 11, MUTED);
         LayoutParams hp = new LayoutParams(-1, -2); hp.topMargin = dp(12); hp.bottomMargin = dp(6); addView(hint, hp);
         chips = new Flow(context); addView(chips, new LayoutParams(-1, -2));
         empty = text("还没选卡，搜索名字后点选添加", 12, MUTED); empty.setPadding(dp(4), dp(8), 0, dp(8)); addView(empty);
@@ -83,7 +83,7 @@ final class CardPicker extends LinearLayout {
             LinearLayout chip = new LinearLayout(getContext()); chip.setGravity(Gravity.CENTER_VERTICAL);
             chip.setPadding(dp(6), 0, 0, 0); chip.setBackground(shape(0xff333346, 10));
             if (card != null) addPortrait(chip, card, 28);
-            TextView label = text((i + 1) + "  " + name, 12, GOLD); label.setPadding(dp(7), 0, dp(2), 0); label.setTypeface(null, Typeface.BOLD);
+            TextView label = text(name, 12, GOLD); label.setPadding(dp(7), 0, dp(2), 0); label.setTypeface(null, Typeface.BOLD);
             chip.addView(label);
             TextView remove = text("×", 21, MUTED); remove.setGravity(Gravity.CENTER); remove.setContentDescription("移除" + name);
             remove.setOnClickListener(v -> { selected.remove(name); renderChips(); showResults(); }); chip.addView(remove, new LayoutParams(dp(40), dp(44)));

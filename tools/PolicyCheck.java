@@ -20,10 +20,10 @@ public class PolicyCheck {
         BuyPolicy p = new BuyPolicy(BuyPolicy.parseTargets("可酷伯\n维迦，可酷伯"), 0, true);
         BuyPolicy.Frame f = frame(74, "维迦", "可酷伯", "可酷伯");
         BuyPolicy.Decision d = p.decide(f);
-        check(d.kind == BUY && Arrays.equals(d.slots, new int[]{1,2,0}), "Batch priority order"); p.sent(d, f);
+        check(d.kind == BUY && Arrays.equals(d.slots, new int[]{0,1,2}), "Buy targets by shop position, independent of saved list order"); p.sent(d, f);
         check(p.decide(f).kind == WAIT && p.bought == 0, "No duplicate tap or early count");
         f = frame(73, "维迦", "", "可酷伯"); d = p.decide(f);
-        check(p.bought == 1 && d.kind == BUY && Arrays.equals(d.slots, new int[]{2,0}), "Partial batch only retries remaining cards"); p.sent(d, f);
+        check(p.bought == 1 && d.kind == BUY && Arrays.equals(d.slots, new int[]{0,2}), "Partial batch only retries remaining cards"); p.sent(d, f);
         f = frame(71); d = p.decide(f);
         check(d.kind == WAIT, "Do not refresh immediately on the first empty purchase result");
         d = p.decide(f);
@@ -60,7 +60,7 @@ public class PolicyCheck {
         p.setAutoRefresh(false);
         check(p.decide(frame(18, "洛")).kind == WAIT, "Live toggle disables refresh");
         p = new BuyPolicy(List.of("可酷伯", "维迦"), 0, true);
-        check(Arrays.equals(p.decide(frame(2, "维迦", "可酷伯", "可酷伯")).slots, new int[]{1,2}), "Batch never exceeds gold budget");
+        check(Arrays.equals(p.decide(frame(2, "维迦", "可酷伯", "可酷伯")).slots, new int[]{0,1}), "Batch never exceeds gold budget");
         p = new BuyPolicy(List.of("凯尔"), 1, false);
         f = frame(12, "凯尔", "凯尔", "凯尔"); Arrays.fill(f.costs, 5);
         check(Arrays.equals(p.decide(f).slots, new int[]{0,1}), "Expensive batch respects actual gold");
@@ -126,6 +126,19 @@ public class PolicyCheck {
         p = new BuyPolicy(List.of("凯尔"), 60, true);
         f = row(11, "凯尔", "凯尔", "凯尔"); Arrays.fill(f.costs, 5);
         check(Arrays.equals(p.decide(f).slots, new int[]{0,1}), "Batch purchases ignore reserve but never exceed current gold");
+        p = new BuyPolicy(List.of("凯尔", "可酷伯"), 0, true);
+        f = frame(1, "凯尔", "可酷伯"); f.costs[0] = 5;
+        check(Arrays.equals(p.decide(f).slots, new int[]{1}), "Unaffordable target never blocks another affordable target");
+        f.costs[0] = -1;
+        check(Arrays.equals(p.decide(f).slots, new int[]{1}), "Unknown target cost never blocks another known affordable target");
+        f.names[1] = "";
+        check(stable(p, f).kind == WAIT, "Never refresh away a target with unknown cost");
+        f.costs[0] = 5;
+        check(stable(p, f).kind == WAIT, "Never refresh away an unaffordable target");
+        p = new BuyPolicy(List.of("维迦", "可酷伯"), 0, false);
+        BuyPolicy reversed = new BuyPolicy(List.of("可酷伯", "维迦"), 0, false);
+        f = frame(2, "可酷伯", "维迦", "可酷伯");
+        check(Arrays.equals(p.decide(f).slots, reversed.decide(f).slots), "Reordering saved targets does not alter buying decisions");
         System.out.println("Policy checks passed.");
     }
 }

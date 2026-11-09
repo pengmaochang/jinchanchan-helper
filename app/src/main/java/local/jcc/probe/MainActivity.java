@@ -105,7 +105,7 @@ public class MainActivity extends Activity {
         });
         space(decks, 14); decks.addView(label("卡组名称", 12, MUTED)); space(decks, 6);
         deckNameInput = input("给这套卡组起个名字"); deckNameInput.setSingleLine(true); decks.addView(deckNameInput);
-        space(decks, 14); decks.addView(label("优先购买", 12, MUTED)); space(decks, 6);
+        space(decks, 14); decks.addView(label("购买目标", 12, MUTED)); space(decks, 6);
         targetCards = new CardPicker(this);
         targetCards.setValue(getSharedPreferences("probe", MODE_PRIVATE).getString("targets", "可酷伯"));
         decks.addView(targetCards); space(decks, 10);

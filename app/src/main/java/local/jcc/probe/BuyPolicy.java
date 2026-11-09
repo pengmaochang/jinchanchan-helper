@@ -78,13 +78,16 @@ public final class BuyPolicy {
         }
         List<Integer> slots = new ArrayList<>();
         int balance = frame.gold;
-        for (String target : targets) for (int i = 0; i < 5; i++) if (target.equals(frame.names[i]) && !slots.contains(i)) {
+        boolean targetPresent = false, unknownCost = false;
+        for (int i = 0; i < 5; i++) if (targets.contains(frame.names[i])) {
+            targetPresent = true;
             int cost = frame.costs[i];
-            if (cost < 1 || cost > 10) return slots.isEmpty() ? decision(Kind.WAIT, -1, "等待读取目标费用") : batch(slots);
-            if (balance < cost) return slots.isEmpty() ? decision(Kind.WAIT, -1, "金币不足以购买目标卡") : batch(slots);
+            if (cost < 1 || cost > 10) { unknownCost = true; continue; }
+            if (balance < cost) continue;
             slots.add(i); balance -= cost;
         }
         if (!slots.isEmpty()) return batch(slots);
+        if (targetPresent) return decision(Kind.WAIT, -1, unknownCost ? "等待读取目标费用" : "金币不足以购买目标卡");
         if (!frame.readable) return decision(Kind.WAIT, -1,
             (frame.problem.isEmpty() ? "当前帧暂未读清" : frame.problem) + "，继续识别");
         if (!autoRefresh) return decision(Kind.WAIT, -1, "当前没有目标，等待你手动刷新");

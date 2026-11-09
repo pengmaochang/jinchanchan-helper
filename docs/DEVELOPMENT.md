@@ -77,7 +77,7 @@ $probeJdk = (Get-ChildItem .tools/jdk17 -Directory | Select-Object -First 1).Ful
 
 | 检查 | 核心场景 |
 | --- | --- |
-| PolicyCheck | 目标优先级、部分购买、实际金币预算、留金仅限制刷新、刷新前后稳定卡面、过渡目标不被重放 |
+| PolicyCheck | 目标顺序无关、跳过暂不可买目标、部分购买、实际金币预算、留金仅限制刷新、刷新前后稳定卡面、过渡目标不被重放 |
 | ActionGateCheck | 一个动作期间禁止另一个动作、完成后的等待、旧回调不能解锁新动作 |
 | TimingCheck | 1～5 个按压不重叠，单次 20～26ms，五张输入排程 ≤150ms |
 | ReserveCheck | 默认值 50、预设上下切换、自定义值及边界不循环 |
